@@ -170,7 +170,30 @@ def bootstrap() -> None:
 @app.command("extract-key")
 def extract_key() -> None:
     """Debug: print current NEXT_PUBLIC_* config extracted from the frontend."""
-    _not_implemented("extract-key")
+    import asyncio  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    from sb_stack.api_client import extract_config  # noqa: PLC0415
+    from sb_stack.logging import configure_logging, get_logger  # noqa: PLC0415
+    from sb_stack.settings import get_settings  # noqa: PLC0415
+
+    settings = get_settings()
+    configure_logging(settings, process_name="sb-extract-key")
+    log = get_logger("sb_stack.extract_key")
+
+    cfg = asyncio.run(extract_config(app_base_url=settings.app_base_url, logger=log))
+    typer.echo(
+        json.dumps(
+            {
+                "api_key": cfg.api_key,
+                "api_management_url": cfg.api_management_url,
+                "app_image_storage_url": cfg.app_image_storage_url,
+                "cms_url": cfg.cms_url,
+                "app_base_url": cfg.app_base_url,
+            },
+            indent=2,
+        )
+    )
 
 
 @app.command()
