@@ -152,7 +152,9 @@ def mcp(
 @app.command("embed-server")
 def embed_server() -> None:
     """Long-running; serves the embedding model on SB_EMBED_PORT."""
-    _not_implemented("embed-server")
+    from sb_stack.embed_server.cli import run  # noqa: PLC0415
+
+    run()
 
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────
