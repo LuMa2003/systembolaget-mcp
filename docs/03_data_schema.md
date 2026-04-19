@@ -10,6 +10,7 @@ Single `.duckdb` file at `/data/sb.duckdb`. DuckDB chosen over SQLite for: colum
 4. **DuckDB native list types** for `grapes`, `taste_symbols` — `list_contains(taste_symbols, 'Fläsk')` is cleaner than a join table.
 5. **Generated columns for derivable values** (image URL from product_id).
 6. **Forward-only migrations** with sha256 integrity checking — see [06_module_layout.md](./06_module_layout.md).
+7. **App-level referential integrity, no DB FKs on child → products/stores.** DuckDB rewrites UPDATEs on a referenced row as DELETE+INSERT internally, which raises an FK violation even when the PK isn't changing. Since Phase C re-updates `products` rows that `stock` and `product_embeddings` reference, we drop those FK constraints and rely on the sync pipeline's invariants (we only insert child rows for products that already exist in `products`). The FK on `sync_run_phases → sync_runs` is also removed for consistency.
 
 ## Tables overview
 

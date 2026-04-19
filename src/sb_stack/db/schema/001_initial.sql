@@ -190,9 +190,14 @@ CREATE TABLE IF NOT EXISTS products (
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- product_variants — same-product-different-sizes graph.
+-- NOTE: We deliberately omit FK constraints on product_number columns here
+-- (and on stock/product_embeddings below). DuckDB rewrites UPDATEs on a
+-- referenced table as DELETE+INSERT internally, which trips FK checks even
+-- when the PK doesn't change. The sync pipeline only inserts child rows
+-- for known products, so the app-level invariant stands without the DB FK.
 -- ──────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS product_variants (
-    product_number          VARCHAR NOT NULL REFERENCES products(product_number),
+    product_number          VARCHAR NOT NULL,
     variant_product_number  VARCHAR NOT NULL,
     variant_volume_ml       INTEGER,
     variant_bottle_text     VARCHAR,
@@ -225,10 +230,11 @@ CREATE TABLE IF NOT EXISTS stores (
 );
 
 -- ──────────────────────────────────────────────────────────────────────────
--- 21-day rolling opening-hours window per store.
+-- 21-day rolling opening-hours window per store. FKs omitted — see
+-- product_variants note above.
 -- ──────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS store_opening_hours (
-    site_id     VARCHAR REFERENCES stores(site_id),
+    site_id     VARCHAR,
     date        DATE,
     open_from   TIME,
     open_to     TIME,
@@ -240,7 +246,7 @@ CREATE TABLE IF NOT EXISTS store_opening_hours (
 -- Demand proxy: daily ordersToday snapshots.
 -- ──────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS store_orders_daily (
-    site_id                                  VARCHAR REFERENCES stores(site_id),
+    site_id                                  VARCHAR,
     date                                     DATE,
     captured_at                              TIMESTAMP,
     orders_today                             INTEGER,
@@ -254,8 +260,8 @@ CREATE TABLE IF NOT EXISTS store_orders_daily (
 -- Sparse current stock (home stores only).
 -- ──────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS stock (
-    site_id           VARCHAR REFERENCES stores(site_id),
-    product_number    VARCHAR REFERENCES products(product_number),
+    site_id           VARCHAR,
+    product_number    VARCHAR,
     stock             INTEGER NOT NULL,
     shelf             VARCHAR,
     is_in_assortment  BOOLEAN,
@@ -303,7 +309,7 @@ CREATE TABLE IF NOT EXISTS scheduled_launches (
 -- once there are rows to index — leaving it out keeps this migration DDL-only.
 -- ──────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS product_embeddings (
-    product_number   VARCHAR PRIMARY KEY REFERENCES products(product_number),
+    product_number   VARCHAR PRIMARY KEY,
     embedding        FLOAT[2560],
     source_hash      VARCHAR,
     model_name       VARCHAR,
@@ -341,7 +347,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 );
 
 CREATE TABLE IF NOT EXISTS sync_run_phases (
-    run_id        BIGINT NOT NULL REFERENCES sync_runs(run_id),
+    run_id        BIGINT NOT NULL,
     phase         VARCHAR NOT NULL,
     started_at    TIMESTAMP NOT NULL,
     finished_at   TIMESTAMP,
