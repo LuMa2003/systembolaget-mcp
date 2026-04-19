@@ -105,13 +105,33 @@ def sync(
     ] = False,
 ) -> None:
     """Trigger a sync run now."""
-    _not_implemented("sync")
+    if from_raw or phase or dry_run:
+        typer.echo(
+            "--from-raw, --phase, and --dry-run are not wired up in this "
+            "scaffold yet; re-run without them.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    from sb_stack.sync.cli import cli_sync  # noqa: PLC0415
+
+    result = cli_sync(full_refresh=full_refresh, reason="manual")
+    typer.echo(f"run {result.run_id}: {result.status} ({result.duration_ms} ms)")
 
 
 @app.command("sync-scheduler")
 def sync_scheduler() -> None:
     """Long-running; fires `sync` on SB_SYNC_CRON."""
-    _not_implemented("sync-scheduler")
+    import asyncio  # noqa: PLC0415
+
+    from sb_stack.db import DB  # noqa: PLC0415
+    from sb_stack.logging import configure_logging, get_logger  # noqa: PLC0415
+    from sb_stack.settings import get_settings  # noqa: PLC0415
+    from sb_stack.sync.scheduler import run_scheduler  # noqa: PLC0415
+
+    settings = get_settings()
+    configure_logging(settings, process_name="sb-sync-scheduler")
+    log = get_logger("sb_stack.sync_scheduler")
+    asyncio.run(run_scheduler(settings=settings, db=DB(settings), logger=log))
 
 
 @app.command()
@@ -119,13 +139,35 @@ def runs(
     limit: Annotated[int, typer.Option("--limit", help="How many to show.")] = 20,
 ) -> None:
     """List recent sync runs."""
-    _not_implemented("runs")
+    from sb_stack.sync.cli import cli_runs  # noqa: PLC0415
+
+    rows = cli_runs(limit=limit)
+    if not rows:
+        typer.echo("no runs recorded yet")
+        return
+    typer.echo(f"{'run_id':>8}  {'started_at':<26}  {'status':<10}  added  updated  discont")
+    for r in rows:
+        typer.echo(
+            f"{r['run_id']:>8}  {str(r['started_at'] or ''):<26}  "
+            f"{(r['status'] or '-'):<10}  "
+            f"{r['products_added'] or 0:>5}  "
+            f"{r['products_updated'] or 0:>7}  "
+            f"{r['products_discontinued'] or 0:>7}"
+        )
 
 
 @app.command("run-info")
-def run_info(run_id: Annotated[str, typer.Argument(help="Sync run id.")]) -> None:
+def run_info(run_id: Annotated[int, typer.Argument(help="Sync run id.")]) -> None:
     """Show full details (incl. phase breakdown) for one run."""
-    _not_implemented("run-info")
+    import json  # noqa: PLC0415
+
+    from sb_stack.sync.cli import cli_run_info  # noqa: PLC0415
+
+    info = cli_run_info(run_id)
+    if info is None:
+        typer.echo(f"no run with id={run_id}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(info, indent=2, default=str))
 
 
 # ── MCP server ─────────────────────────────────────────────────────────────
