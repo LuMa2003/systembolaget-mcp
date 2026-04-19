@@ -92,7 +92,9 @@ CREATE TABLE IF NOT EXISTS products (
     taste_clock_group             VARCHAR,
     taste_clock_group_bitter      VARCHAR,
     taste_clock_group_smokiness   VARCHAR,
-    has_casque_taste              BOOLEAN,
+    -- API returns "Fatlagrad" / "Inte fatlagrad" / null — a 3-valued string,
+    -- not a boolean despite the field name. Store verbatim.
+    has_casque_taste              VARCHAR,
 
     -- Food pairings
     taste_symbols                 VARCHAR[],
@@ -174,7 +176,7 @@ CREATE TABLE IF NOT EXISTS products (
     -- Dates
     product_launch_date           DATE,
     original_sell_start_date      DATE,
-    sell_start_time               TIMESTAMP,
+    sell_start_time               TIME,
     tasting_date                  DATE,
 
     -- Derived / operational

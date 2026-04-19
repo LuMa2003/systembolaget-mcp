@@ -111,7 +111,7 @@ CREATE TABLE products (
   taste_clock_group             VARCHAR,
   taste_clock_group_bitter      VARCHAR,
   taste_clock_group_smokiness   VARCHAR,
-  has_casque_taste              BOOLEAN,
+  has_casque_taste              VARCHAR,   -- "Fatlagrad"/"Inte fatlagrad"/null, not a boolean
 
   -- Food pairings
   taste_symbols                 VARCHAR[],        -- list
@@ -193,7 +193,7 @@ CREATE TABLE products (
   -- Dates
   product_launch_date           DATE,
   original_sell_start_date      DATE,
-  sell_start_time               TIMESTAMP,
+  sell_start_time               TIME,
   tasting_date                  DATE,
 
   -- Meta
