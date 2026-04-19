@@ -173,12 +173,14 @@ class SyncStatusResult(BaseModel):
     stale: bool
 
 
-class PairWithDishResult(BaseModel):
-    """Stub — the full pairing engine lives in Step 7."""
+class PairingRecommendation(BaseModel):
+    product: Product
+    similarity: float
+    why: str
 
-    recommendations: list[Product] = Field(default_factory=list)
+
+class PairWithDishResult(BaseModel):
+    recommendations: list[PairingRecommendation] = Field(default_factory=list)
     confidence: str = "low"
-    message: str = (
-        "Pairing engine är inte fullt implementerad ännu. "
-        "Använd semantic_search eller search_products med pairs_with_any."
-    )
+    dish: str = ""
+    notes: str | None = None
