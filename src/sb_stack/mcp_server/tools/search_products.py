@@ -175,9 +175,7 @@ def register(server: Any) -> None:
 
         # Total count
         with ctx.db.reader() as conn:
-            count_row = conn.execute(
-                f"SELECT COUNT(*) FROM products{where_sql}", params
-            ).fetchone()
+            count_row = conn.execute(f"SELECT COUNT(*) FROM products{where_sql}", params).fetchone()
             total = int(count_row[0]) if count_row else 0
             # Results page
             sql = (

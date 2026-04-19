@@ -216,7 +216,18 @@ def embed_server() -> None:
 @app.command()
 def bootstrap() -> None:
     """Seed home stores from SB_STORE_SUBSET (idempotent)."""
-    _not_implemented("bootstrap")
+    from sb_stack.bootstrap import bootstrap_home_stores  # noqa: PLC0415
+    from sb_stack.logging import configure_logging, get_logger  # noqa: PLC0415
+    from sb_stack.settings import get_settings  # noqa: PLC0415
+
+    settings = get_settings()
+    configure_logging(settings, process_name="sb-bootstrap")
+    log = get_logger("sb_stack.bootstrap")
+    counts = bootstrap_home_stores(settings, logger=log)
+    typer.echo(
+        f"flagged {counts['home_stores_flagged']} home store(s); "
+        f"main={counts['main_store_flagged']}"
+    )
 
 
 # ── Diagnostics ────────────────────────────────────────────────────────────

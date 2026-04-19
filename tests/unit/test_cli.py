@@ -42,8 +42,7 @@ def test_version_flag() -> None:
 
 
 def test_subcommand_stub_exits_2() -> None:
-    # Stubbed commands exit with code 2 and say "not implemented yet".
-    # `bootstrap` is still a stub (Step 1); `migrate` was wired up in Step 2.
-    result = runner.invoke(app, ["bootstrap"])
+    # `shell` is the last remaining stub; every other subcommand is wired up.
+    result = runner.invoke(app, ["shell"])
     assert result.exit_code == 2
     assert "not implemented" in (result.output + (result.stderr or ""))
