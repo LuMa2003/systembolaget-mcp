@@ -1,0 +1,4 @@
+#!/command/execlineb -P
+foreground { mkdir -p /data/logs }
+with-contenv
+exec sb-stack embed-server
