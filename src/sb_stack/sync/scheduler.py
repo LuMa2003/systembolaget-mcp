@@ -47,7 +47,9 @@ async def run_scheduler(*, settings: Settings, db: DB, logger: Any) -> None:
         ) as embed_client,
     ):
         # Wait for sb-embed before any run.
-        await wait_for_embed_ready(embed_client, timeout_s=600, logger=logger)
+        # 30 min so first-boot has time to pull the ~8 GB Qwen3 model
+        # before the scheduler gives up.
+        await wait_for_embed_ready(embed_client, timeout_s=1800, logger=logger)
 
         if settings.first_run_on_bootstrap and _needs_first_run(db):
             logger.info("first_run_starting")

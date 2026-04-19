@@ -11,7 +11,9 @@ EMBED_HEALTH="${SB_EMBED_URL%/v1/embeddings}"
 EMBED_HEALTH="${EMBED_HEALTH%/embeddings}"
 EMBED_HEALTH="${EMBED_HEALTH}/health"
 
-TIMEOUT_SECONDS="${SB_EMBED_WAIT_TIMEOUT_SECONDS:-600}"
+# Default 30 min so first-boot has time to download the ~8 GB Qwen3 model
+# before s6 gives up on the readiness oneshot.
+TIMEOUT_SECONDS="${SB_EMBED_WAIT_TIMEOUT_SECONDS:-1800}"
 INTERVAL_SECONDS=5
 elapsed=0
 
