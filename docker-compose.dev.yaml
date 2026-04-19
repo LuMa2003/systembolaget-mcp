@@ -1,0 +1,45 @@
+# Dev compose — splits the stack so hot-reloading source code against
+# the live sb-embed works from the WSL host. Defaults to the same Qwen3
+# model as prod so ranking parity holds; see docs/11 §"When to diverge".
+services:
+  sb-embed-dev:
+    build: .
+    runtime: nvidia
+    command: sb-stack embed-server
+    environment:
+      - SB_DATA_DIR=/data
+      - SB_EMBED_MODEL=Qwen/Qwen3-Embedding-4B
+      - SB_EMBED_DIM=2560
+      - SB_EMBED_DEVICE=cuda:0
+      - SB_LOG_LEVEL=debug
+      - SB_LOG_FORMAT=text
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./dev-data:/data
+      - ./src:/app/src
+
+  sb-mcp-dev:
+    build: .
+    command: sb-stack mcp
+    depends_on:
+      sb-embed-dev:
+        condition: service_started
+    environment:
+      - SB_DATA_DIR=/data
+      - SB_EMBED_URL=http://sb-embed-dev:9000/v1/embeddings
+      - SB_EMBED_DIM=2560
+      - SB_STORE_SUBSET=1701
+      - SB_MAIN_STORE=1701
+      - SB_MCP_TRANSPORT=http
+      - SB_MCP_TOKEN=dev-token
+      - SB_LOG_LEVEL=debug
+      - SB_LOG_FORMAT=text
+      - SB_FIRST_RUN_ON_BOOTSTRAP=false
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./dev-data:/data
+      - ./src:/app/src

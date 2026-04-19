@@ -1,0 +1,30 @@
+services:
+  sb-stack:
+    image: sb-stack:latest
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - SB_STORE_SUBSET=1701,1702,1716,1718
+      - SB_MAIN_STORE=1701
+      # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+      - SB_MCP_TOKEN=${SB_MCP_TOKEN:?set SB_MCP_TOKEN in your env or .env file}
+      - SB_SYNC_CRON=0 4 * * *
+      - SB_SYNC_TIMEZONE=Europe/Stockholm
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "8000:8000"
+    volumes:
+      - /mnt/tank/sb-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - sb-stack
+        - doctor
+        - --only
+        - db_reachable,disk_space,embed_service_reachable
+        - --exit-on-warn
+      interval: 5m
+      timeout: 30s
+      start_period: 15m
+      retries: 3
