@@ -424,7 +424,9 @@ sb-stack --help
     --transport (http|stdio)
     --port PORT
   embed-server         long-running; serves Qwen3 on SB_EMBED_PORT
-  bootstrap            first-run flow: migrate + seed home stores + initial sync
+  bootstrap            seed home stores from SB_STORE_SUBSET (idempotent;
+                       does NOT trigger initial sync — sb-sync-scheduler
+                       detects empty sync_runs and fires the first run)
   runs [options]       list recent sync runs
     --limit N            how many to show (default 20)
   run-info <run-id>    show full details (incl. phase breakdown) for one run

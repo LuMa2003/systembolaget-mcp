@@ -350,7 +350,7 @@ SB_EMBED_PORT=9000                    (server-only)
 SB_EMBED_MAX_BATCH=2048               (server-side hard limit)
 SB_EMBED_GPU_BATCH_SIZE=32            (server internal batching on GPU)
 SB_EMBED_CLIENT_BATCH_SIZE=128        (client-side chunking before calling server)
-SB_EMBED_CACHE_DIR=/data/models       (HF cache)
+(HF cache path is derived from SB_DATA_DIR — not a separate env var)
 ```
 
 `SB_EMBED_URL` is the pivot: point it anywhere OpenAI-compatible.
