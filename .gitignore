@@ -1,0 +1,93 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing & coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Type checkers
+.pyre/
+.pytype/
+.dmypy.json
+dmypy.json
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker local data
+data/
+dev-data/
+
+# DuckDB runtime artifacts (in case anyone opens the live DB locally)
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# Logs
+logs/
+*.log
+
+# Tool scratch
+/tmp/
+.claude/
+
+# Cassettes can grow large; compressed form is committed
+tests/fixtures/cassettes/*.yaml
+!tests/fixtures/cassettes/*.yaml.gz
+
+# Model cache (8 GB; never commit)
+models/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
