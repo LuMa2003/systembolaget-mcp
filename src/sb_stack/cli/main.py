@@ -63,7 +63,19 @@ def _root(
 @app.command()
 def migrate() -> None:
     """Apply pending schema migrations (idempotent)."""
-    _not_implemented("migrate")
+    # Deferred imports keep `sb-stack --help` snappy by avoiding DuckDB /
+    # structlog / pydantic-settings imports until a real command needs them.
+    from sb_stack.db import DB, MigrationRunner  # noqa: PLC0415
+    from sb_stack.logging import configure_logging, get_logger  # noqa: PLC0415
+    from sb_stack.settings import get_settings  # noqa: PLC0415
+
+    settings = get_settings()
+    configure_logging(settings, process_name="sb-migrate")
+    log = get_logger("sb_stack.migrate")
+    db = DB(settings)
+    runner = MigrationRunner(db, settings, log)
+    applied = runner.run()
+    typer.echo(f"applied {applied} migration(s)")
 
 
 # ── Sync ───────────────────────────────────────────────────────────────────
