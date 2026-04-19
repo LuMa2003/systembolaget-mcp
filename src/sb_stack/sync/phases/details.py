@@ -58,7 +58,20 @@ async def run_phase_c(
                 return
             await archive.write_detail(pn, detail)
             async with lock:
-                _merge_detail_into_product(db, pn, detail)
+                # Each detail merge is its own short UPDATE outside a bigger
+                # transaction — one bad row (unexpected API type) must not
+                # kill the whole phase. Swallow + log; Phase outcome drops
+                # to PARTIAL via the errors list.
+                try:
+                    _merge_detail_into_product(db, pn, detail)
+                except Exception as e:  # noqa: BLE001
+                    errors.append(
+                        PhaseError(f"detail merge failed for {pn}: {e}", cause=e)
+                    )
+                    logger.warning(
+                        "detail_merge_failed", product_number=pn, error=str(e)
+                    )
+                    return
                 fetched += 1
                 logger.debug("detail_fetched", product_number=pn)
 

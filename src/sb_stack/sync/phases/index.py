@@ -15,6 +15,12 @@ from typing import Any
 from sb_stack.db import DB
 from sb_stack.sync.phase_types import Phase, PhaseOutcome, PhaseResult
 
+# DuckDB v1.5.2 FTS ships a Swedish Snowball *stemmer* but not a Swedish
+# *stopwords* list — passing stopwords='swedish' makes the extension look
+# for a table named "swedish" and crash. 'none' disables stopword
+# filtering entirely, which is what we want here anyway: Systembolaget's
+# text fields are terse, and filtering common Swedish words would strip
+# meaningful matches on short queries like "rökt lax".
 _CREATE_FTS_SQL = """
 PRAGMA create_fts_index(
     'products',
@@ -22,7 +28,7 @@ PRAGMA create_fts_index(
     'name_bold', 'name_thin', 'producer_name', 'country',
     'taste', 'aroma', 'usage', 'producer_description',
     stemmer = 'swedish',
-    stopwords = 'swedish',
+    stopwords = 'none',
     lower = 1,
     strip_accents = 0,
     overwrite = 1

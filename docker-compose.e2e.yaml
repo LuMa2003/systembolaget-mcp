@@ -1,0 +1,15 @@
+# Compose override for a local end-to-end test.
+# Mounts ./dev-data instead of /mnt/tank/sb-data and pins a single home
+# store to keep the sync quick. Read with:
+#   docker compose -f docker-compose.yaml -f docker-compose.e2e.yaml up
+services:
+  sb-stack:
+    environment:
+      - SB_STORE_SUBSET=1701
+      - SB_MAIN_STORE=1701
+      - SB_SYNC_CONCURRENCY=20
+      - SB_LOG_FORMAT=text
+      - SB_LOG_LEVEL=info
+      - SB_FIRST_RUN_ON_BOOTSTRAP=true
+    volumes:
+      - ./dev-data:/data
