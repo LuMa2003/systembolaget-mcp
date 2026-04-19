@@ -197,15 +197,57 @@ TRACKED_FIELDS: tuple[str, ...] = (
 )
 
 
+# Columns that the DB stores as VARCHAR[]. The API is inconsistent: the
+# search endpoint returns proper JSON arrays (`["Fisk", "Kött"]`), but the
+# detail endpoint returns semicolon-joined strings (`"Fisk;Kött"`) in the
+# same-named field, sometimes alongside a `*List` companion that is an
+# array. We coerce to a list on the way in so Phase B never hands a string
+# to DuckDB for a VARCHAR[] column.
+_LIST_COLUMNS: frozenset[str] = frozenset({"taste_symbols", "grapes"})
+
+# API aliases for list fields: when the primary camelCase key is a string
+# but a `*List` sibling is an array, prefer the sibling.
+_LIST_ARRAY_ALIASES: dict[str, str] = {
+    "tasteSymbols": "tasteSymbolsList",
+    "grapes": "grapesList",
+}
+
+
 def map_product(payload: dict[str, Any]) -> dict[str, Any]:
-    """Translate one API product payload into a `products` row dict."""
+    """Translate one API product payload into a `products` row dict.
+
+    Coerces list-valued columns to Python lists regardless of whether the
+    API sent a list or a semicolon-joined string.
+    """
+    # Build the array-sibling lookup once per call.
+    list_arrays = {
+        primary: payload[sibling]
+        for primary, sibling in _LIST_ARRAY_ALIASES.items()
+        if isinstance(payload.get(sibling), list)
+    }
     row: dict[str, Any] = {}
     for k, v in payload.items():
         col = FIELD_MAP.get(k)
         if col is None:
             continue
+        if col in _LIST_COLUMNS:
+            v = _coerce_list(v, array_sibling=list_arrays.get(k))
         row[col] = v
     return row
+
+
+def _coerce_list(value: Any, *, array_sibling: list[Any] | None) -> list[Any] | None:
+    """Return a list for VARCHAR[] columns, handling the API's dual encoding."""
+    if array_sibling is not None:
+        return list(array_sibling)
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(";") if part.strip()]
+    # Unknown shape — let DuckDB complain if this ever happens in prod.
+    return value
 
 
 def field_hash(row: dict[str, Any]) -> str:
