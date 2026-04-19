@@ -95,16 +95,24 @@ def _persist_products(
 ) -> set[str]:
     """Upsert every catalog product from raw/. Returns seen product_numbers."""
     seen: set[str] = set()
+    # NOTE: we deliberately DON'T catch per-product errors here.
+    # DuckDB aborts the whole transaction on any statement error — every
+    # subsequent statement then fails with "transaction is aborted". Swallowing
+    # the first exception lets the Phase B tx slide into that unrecoverable
+    # state and hides the real root cause. Let the first real failure bubble
+    # up to the Phase B try/except so the whole tx rolls back with a clear
+    # error naming the offending product.
+    _ = errors  # kept in the signature for future savepoint-based recovery
     for _category, _page, payload in raw.iter_catalog_pages():
         for api_product in payload.get("products", []) or []:
             try:
                 pn = _persist_one_product(conn, api_product, counts, now, logger)
-                if pn:
-                    seen.add(pn)
             except duckdb.Error as e:
-                errors.append(
-                    PhaseError(f"persist failed for {api_product.get('productNumber')}: {e}")
-                )
+                raise duckdb.Error(
+                    f"persist failed for productNumber={api_product.get('productNumber')!r}: {e}"
+                ) from e
+            if pn:
+                seen.add(pn)
     return seen
 
 
