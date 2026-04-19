@@ -271,7 +271,49 @@ def doctor(
     ] = False,
 ) -> None:
     """Run healthchecks."""
-    _not_implemented("doctor")
+    import json  # noqa: PLC0415
+
+    from sb_stack.doctor import run_all  # noqa: PLC0415
+    from sb_stack.settings import get_settings  # noqa: PLC0415
+
+    settings = get_settings()
+    names = [n.strip() for n in only.split(",")] if only else None
+    result = run_all(settings, only=names, include_optional=verbose)
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "name": r.name,
+                            "status": r.status,
+                            "duration_ms": r.duration_ms,
+                            "summary": r.summary,
+                            "details": r.details,
+                        }
+                        for r in result.results
+                    ],
+                    "summary": {
+                        "pass": result.passed,
+                        "warn": result.warned,
+                        "fail": result.failed,
+                    },
+                },
+                indent=2,
+                default=str,
+            )
+        )
+    else:
+        icon = {"pass": "OK ", "warn": "WRN", "fail": "ERR"}
+        for r in result.results:
+            line = f"{icon[r.status]}  {r.name:<24}  {r.summary}"
+            typer.echo(line)
+            if verbose and r.details:
+                typer.echo(f"     └ {r.details}")
+        typer.echo(f"\n{result.passed} pass · {result.warned} warn · {result.failed} fail")
+
+    raise typer.Exit(result.exit_code(exit_on_warn=exit_on_warn))
 
 
 @app.command()
