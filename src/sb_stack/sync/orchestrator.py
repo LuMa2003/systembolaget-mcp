@@ -17,6 +17,7 @@ from sb_stack.api_client import SBApiClient
 from sb_stack.db import DB, MigrationRunner
 from sb_stack.embed import EmbeddingClient
 from sb_stack.errors import SBError
+from sb_stack.notifications import AlertManager
 from sb_stack.raw_archive import RawArchiveReader, RawArchiveWriter
 from sb_stack.settings import Settings
 from sb_stack.sync.lockfile import Lockfile, LockfileBusyError
@@ -221,6 +222,11 @@ async def run_sync(  # noqa: PLR0915 — the phase sequencer is deliberately lin
             status=status,
             duration_ms=total_ms,
         )
+        # Ntfy state-transition evaluation. Silent when SB_NTFY_URL unset.
+        try:
+            await AlertManager(settings, logger=logger).evaluate(status=status, run_id=run_id)
+        except Exception as e:  # noqa: BLE001 — notifier must never break sync
+            logger.warning("alert_evaluation_failed", error=repr(e))
         return SyncRunResult(
             run_id=run_id,
             status=status,
