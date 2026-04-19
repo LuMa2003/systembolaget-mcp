@@ -185,7 +185,18 @@ def mcp(
     ] = None,
 ) -> None:
     """Run the MCP server (long-running)."""
-    _not_implemented("mcp")
+    import os  # noqa: PLC0415
+
+    # CLI flags win over env vars; plumb via the settings env prefix so the
+    # Settings singleton picks them up uniformly.
+    if transport:
+        os.environ["SB_MCP_TRANSPORT"] = transport
+    if port is not None:
+        os.environ["SB_MCP_PORT"] = str(port)
+
+    from sb_stack.mcp_server.server import run  # noqa: PLC0415
+
+    run()
 
 
 # ── Embedding service ──────────────────────────────────────────────────────

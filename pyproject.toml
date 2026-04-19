@@ -86,6 +86,12 @@ module              = "tests.*"
 disallow_untyped_defs = false
 check_untyped_defs    = false
 
+[[tool.mypy.overrides]]
+# FastMCP's @tool decorator isn't typed yet; silence the "untyped
+# decorator makes function untyped" barrage on our tool modules.
+module = "sb_stack.mcp_server.tools.*"
+disallow_untyped_decorators = false
+
 # -----------------------------------------------------------------------------
 # Pytest
 # -----------------------------------------------------------------------------
