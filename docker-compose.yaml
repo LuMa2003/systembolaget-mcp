@@ -1,6 +1,9 @@
 services:
   sb-stack:
-    image: sb-stack:latest
+    # Published by .github/workflows/docker.yaml on every push to main.
+    # Pin to a :vX.Y.Z tag (from a GitHub release) if you want explicit
+    # control over rolling upgrades.
+    image: ghcr.io/luma2003/systembolaget-mcp:latest
     restart: unless-stopped
     runtime: nvidia
     environment:
