@@ -230,13 +230,16 @@ def map_product(payload: dict[str, Any]) -> dict[str, Any]:
         col = FIELD_MAP.get(k)
         if col is None:
             continue
-        if col in _LIST_COLUMNS:
-            v = _coerce_list(v, array_sibling=list_arrays.get(k))
-        row[col] = v
+        value = (
+            _coerce_list(v, array_sibling=list_arrays.get(k))
+            if col in _LIST_COLUMNS
+            else v
+        )
+        row[col] = value
     return row
 
 
-def _coerce_list(value: Any, *, array_sibling: list[Any] | None) -> list[Any] | None:
+def _coerce_list(value: Any, *, array_sibling: list[Any] | None) -> Any:
     """Return a list for VARCHAR[] columns, handling the API's dual encoding."""
     if array_sibling is not None:
         return list(array_sibling)
