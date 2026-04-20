@@ -101,7 +101,7 @@ async def run_sync(  # noqa: PLR0915 — the phase sequencer is deliberately lin
 
             # Phase B
             logger.info("phase_started", run_id=run_id, phase=Phase.PERSIST.value)
-            phase_b = run_phase_b(
+            phase_b, changed_set = run_phase_b(
                 db=db,
                 raw=reader,
                 home_store_ids=home_stores,
@@ -118,8 +118,12 @@ async def run_sync(  # noqa: PLR0915 — the phase sequencer is deliberately lin
                 counts=phase_b.counts,
             )
 
-            # Phase C — only products we just added or updated.
-            changed = _changed_product_numbers(db, phase_b.counts, full_refresh)
+            # Phase C — only the products Phase B actually added or whose
+            # tracked-field hash changed. For --full-refresh, widen to every
+            # non-discontinued product via the DB.
+            changed = _changed_product_numbers(
+                db, changed_set=changed_set, full_refresh=full_refresh
+            )
             logger.info("phase_started", run_id=run_id, phase=Phase.DETAILS.value)
             phase_c = await run_phase_c(
                 api=api,
@@ -258,28 +262,38 @@ def _start_run_row(db: DB, *, reason: str, full_refresh: bool) -> int:
     return run_id
 
 
-def _changed_product_numbers(
-    db: DB, persist_counts: dict[str, int], full_refresh: bool
-) -> list[str]:
-    """Products that need Phase C+D attention."""
+def _changed_product_numbers(db: DB, *, changed_set: set[str], full_refresh: bool) -> list[str]:
+    """Products that need Phase C+D attention.
+
+    For --full-refresh, every non-discontinued product. Otherwise, the
+    exact set Phase B reported as added-or-hash-changed (plus, as a
+    re-heal, any product whose detail-only fields are still NULL — those
+    are the rows that crashed Phase C's merge on a prior run and never
+    got their detail fetched).
+    """
     if full_refresh:
         with db.reader() as conn:
             rows = conn.execute(
                 "SELECT product_number FROM products WHERE is_discontinued IS NOT TRUE"
             ).fetchall()
             return [r[0] for r in rows]
-    # Heuristic for the thin pipeline: fetch new + recently-updated rows.
-    touched = persist_counts.get("products_added", 0) + persist_counts.get("products_updated", 0)
-    if touched == 0:
-        return []
+    # Re-heal: rows that look like they never received a successful detail
+    # merge. We pick a column that the detail endpoint is the sole source of
+    # and check for NULL — `usage` is a good canary (Systembolaget's
+    # sommelier-written pairing hint, populated for every curated product
+    # except Presentartiklar/alkoholfritt oddities).
     with db.reader() as conn:
         rows = conn.execute(
             """
             SELECT product_number FROM products
-             WHERE last_fetched_at = (SELECT MAX(last_fetched_at) FROM products)
+             WHERE (is_discontinued IS NULL OR is_discontinued = FALSE)
+               AND usage IS NULL
+               AND (category_level_1 IS NULL OR category_level_1 <> 'Presentartiklar')
             """
         ).fetchall()
-        return [r[0] for r in rows]
+    reheal = {r[0] for r in rows}
+    # Return the union: Phase B's changed set + the re-heal queue.
+    return sorted(changed_set | reheal)
 
 
 __all__ = ["SyncRunResult", "run_sync", "LockfileBusyError", "SBError"]

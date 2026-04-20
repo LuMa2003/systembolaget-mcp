@@ -35,8 +35,17 @@ def run_phase_b(
     home_store_ids: list[str],
     phase_a_ok: bool,
     logger: Any,
-) -> PhaseResult:
-    """Diff + persist everything Phase A fetched. Atomic per run."""
+) -> tuple[PhaseResult, set[str]]:
+    """Diff + persist. Returns the result AND the set of product_numbers
+    that were added or had a TRACKED-field hash change — exactly the rows
+    Phase C should fetch fresh details for.
+
+    (Earlier version returned only the PhaseResult and the orchestrator
+    re-derived the changed set via a `last_fetched_at = MAX(...)` query.
+    That query matched every touched row because every row in a run shares
+    the same `now` timestamp, so Phase C ended up re-fetching the entire
+    catalog every night.)
+    """
     t0 = time.monotonic()
     counts = {
         "products_added": 0,
@@ -46,14 +55,16 @@ def run_phase_b(
         "history_rows_written": 0,
     }
     errors: list[PhaseError] = []
-
+    changed: set[str] = set()
     now = datetime.now(UTC)
 
     try:
         with db.writer() as conn:
             conn.execute("BEGIN TRANSACTION")
             try:
-                seen_product_numbers = _persist_products(conn, raw, counts, errors, now, logger)
+                seen_product_numbers = _persist_products(
+                    conn, raw, counts, errors, changed, now, logger
+                )
                 if phase_a_ok:
                     _mark_missing_as_discontinued(conn, seen_product_numbers, counts, now, logger)
                 _persist_stores(conn, raw, now)
@@ -68,7 +79,7 @@ def run_phase_b(
         raise CatastrophicError(f"persist transaction failed: {e}") from e
 
     outcome = PhaseOutcome.PARTIAL if errors else PhaseOutcome.OK
-    return PhaseResult(
+    result = PhaseResult(
         phase=Phase.PERSIST,
         outcome=outcome,
         duration_ms=int((time.monotonic() - t0) * 1000),
@@ -80,6 +91,7 @@ def run_phase_b(
             f"{counts['stock_rows_updated']} stock rows"
         ),
     )
+    return result, changed
 
 
 # ── Products + history ────────────────────────────────────────────────
@@ -90,10 +102,14 @@ def _persist_products(
     raw: RawArchiveReader,
     counts: dict[str, int],
     errors: list[PhaseError],
+    changed: set[str],
     now: datetime,
     logger: Any,
 ) -> set[str]:
-    """Upsert every catalog product from raw/. Returns seen product_numbers."""
+    """Upsert every catalog product. Populates `changed` with every
+    product_number that was added or had a tracked-field hash change.
+    Returns the full set of seen product_numbers (used by the
+    discontinuation sweep)."""
     seen: set[str] = set()
     # NOTE: we deliberately DON'T catch per-product errors here.
     # DuckDB aborts the whole transaction on any statement error — every
@@ -106,7 +122,7 @@ def _persist_products(
     for _category, _page, payload in raw.iter_catalog_pages():
         for api_product in payload.get("products", []) or []:
             try:
-                pn = _persist_one_product(conn, api_product, counts, now, logger)
+                pn = _persist_one_product(conn, api_product, counts, changed, now, logger)
             except duckdb.Error as e:
                 raise duckdb.Error(
                     f"persist failed for productNumber={api_product.get('productNumber')!r}: {e}"
@@ -120,6 +136,7 @@ def _persist_one_product(
     conn: duckdb.DuckDBPyConnection,
     api_product: dict[str, Any],
     counts: dict[str, int],
+    changed: set[str],
     now: datetime,
     logger: Any,
 ) -> str | None:
@@ -138,6 +155,7 @@ def _persist_one_product(
     if existing is None:
         _insert_product(conn, row, now)
         counts["products_added"] += 1
+        changed.add(pn)
         logger.debug("product_persisted", product_number=pn, op="added")
         return pn
 
@@ -152,6 +170,7 @@ def _persist_one_product(
     _write_history_diff(conn, pn, row, counts, now)
     _update_product(conn, row, now)
     counts["products_updated"] += 1
+    changed.add(pn)
     logger.debug("product_persisted", product_number=pn, op="updated")
     return pn
 
