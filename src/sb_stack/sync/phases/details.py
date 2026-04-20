@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from sb_stack.api_client import SBApiClient
@@ -90,12 +91,15 @@ def _merge_detail_into_product(db: DB, pn: str, detail: dict[str, Any]) -> None:
     The detail endpoint returns the same shape as search plus richer text
     fields (aroma, usage, producer_description, etc.). We UPDATE only the
     columns actually present in the payload to avoid blanking fields the
-    catalog response already populated.
+    catalog response already populated. On success, stamp
+    `last_detail_fetched_at` — that's how the orchestrator's re-heal
+    query knows to stop queuing this product.
     """
     row = map_product(detail)
     row.pop("product_number", None)
     if not row:
         return
+    row["last_detail_fetched_at"] = datetime.now(UTC)
     set_cols = list(row.keys())
     set_sql = ", ".join(f"{c} = ?" for c in set_cols)
     with db.writer() as conn:

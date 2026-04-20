@@ -202,7 +202,8 @@ CREATE TABLE products (
     || product_id || '/' || product_id || '_400.webp'
   ),
   first_seen_at                 TIMESTAMP DEFAULT now(),
-  last_fetched_at               TIMESTAMP,
+  last_fetched_at               TIMESTAMP,          -- any sync touched the row
+  last_detail_fetched_at        TIMESTAMP,          -- Phase C successful merge (added in migration 002)
   field_hash                    VARCHAR,          -- sha256 of tracked fields
   embed_text_hash               VARCHAR           -- sha256 of embedding text
 );

@@ -266,10 +266,13 @@ def _changed_product_numbers(db: DB, *, changed_set: set[str], full_refresh: boo
     """Products that need Phase C+D attention.
 
     For --full-refresh, every non-discontinued product. Otherwise, the
-    exact set Phase B reported as added-or-hash-changed (plus, as a
-    re-heal, any product whose detail-only fields are still NULL — those
-    are the rows that crashed Phase C's merge on a prior run and never
-    got their detail fetched).
+    exact set Phase B reported as added-or-hash-changed, union'd with
+    the re-heal queue: rows that have never successfully received a
+    detail merge (`last_detail_fetched_at IS NULL`) AND don't show any
+    evidence of one in their detail columns either (fallback canary
+    for products that predate migration 002 and the new timestamp
+    column). Once Phase C stamps last_detail_fetched_at on success,
+    the product falls out of the queue permanently.
     """
     if full_refresh:
         with db.reader() as conn:
@@ -277,22 +280,19 @@ def _changed_product_numbers(db: DB, *, changed_set: set[str], full_refresh: boo
                 "SELECT product_number FROM products WHERE is_discontinued IS NOT TRUE"
             ).fetchall()
             return [r[0] for r in rows]
-    # Re-heal: rows that look like they never received a successful detail
-    # merge. We pick a column that the detail endpoint is the sole source of
-    # and check for NULL — `usage` is a good canary (Systembolaget's
-    # sommelier-written pairing hint, populated for every curated product
-    # except Presentartiklar/alkoholfritt oddities).
     with db.reader() as conn:
         rows = conn.execute(
             """
             SELECT product_number FROM products
              WHERE (is_discontinued IS NULL OR is_discontinued = FALSE)
-               AND usage IS NULL
                AND (category_level_1 IS NULL OR category_level_1 <> 'Presentartiklar')
+               AND last_detail_fetched_at IS NULL
+               AND taste IS NULL
+               AND aroma IS NULL
+               AND producer_description IS NULL
             """
         ).fetchall()
     reheal = {r[0] for r in rows}
-    # Return the union: Phase B's changed set + the re-heal queue.
     return sorted(changed_set | reheal)
 
 
