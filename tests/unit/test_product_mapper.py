@@ -109,3 +109,43 @@ def test_legitimate_numeric_string_passes_through_for_duckdb_cast() -> None:
     # implicit string→float cast handles it on INSERT.
     row = map_product({"productNumber": "1", "alcoholPercentage": "13.5"})
     assert row["alcohol_percentage"] == "13.5"
+
+
+# ── API rename coverage ──────────────────────────────────────────────────
+
+
+def test_new_and_legacy_api_key_names_both_land_on_same_column() -> None:
+    """Aliases from the rename pass: new API name → new column, legacy
+    name → same column. Whichever wins depends on iteration order; both
+    must at least produce a non-null value on the target column."""
+    for new, legacy, col in (
+        ("packagingCO2ImpactLevel", "packagingCo2Level", "packaging_co2_level"),
+        (
+            "packagingCO2EquivalentPerLitre",
+            "packagingCo2GPerL",
+            "packaging_co2_g_per_l",
+        ),
+        ("tasteClockFruitacid", "tasteClockFruitAcid", "taste_clock_fruitacid"),
+        ("didYouKnowInformation", "didYouKnow", "did_you_know"),
+        ("isFsTsAssortment", "isFstsAssortment", "is_fsts_assortment"),
+        ("isTsLsAssortment", "isTslsAssortment", "is_tsls_assortment"),
+        (
+            "backInStockAtSupplier",
+            "backInStockAtSupplierDate",
+            "back_in_stock_at_supplier",
+        ),
+        (
+            "isSupplierTemporaryNotAvailable",
+            "isSupplierTempNotAvailable",
+            "is_supplier_temp_not_available",
+        ),
+        (
+            "supplierTemporaryNotAvailableDate",
+            "supplierTempNotAvailableDate",
+            "supplier_temp_not_available_date",
+        ),
+    ):
+        new_row = map_product({"productNumber": "1", new: "X"})
+        legacy_row = map_product({"productNumber": "1", legacy: "X"})
+        assert new_row.get(col) == "X", f"new name {new!r} didn't populate {col!r}"
+        assert legacy_row.get(col) == "X", f"legacy name {legacy!r} didn't populate {col!r}"

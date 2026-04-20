@@ -57,6 +57,10 @@ FIELD_MAP: dict[str, str] = {
     "packagingLevel1": "packaging_level_1",
     "packagingLevel2": "packaging_level_2",
     "packagingTypeCode": "packaging_type_code",
+    # API uses the verbose "CO2" names today; the older mixed-case forms
+    # are kept as aliases in case a cached response still carries them.
+    "packagingCO2ImpactLevel": "packaging_co2_level",
+    "packagingCO2EquivalentPerLitre": "packaging_co2_g_per_l",
     "packagingCo2Level": "packaging_co2_level",
     "packagingCo2GPerL": "packaging_co2_g_per_l",
     "seal": "seal",
@@ -85,6 +89,8 @@ FIELD_MAP: dict[str, str] = {
     "tasteClockBody": "taste_clock_body",
     "tasteClockBitter": "taste_clock_bitter",
     "tasteClockSweetness": "taste_clock_sweetness",
+    # API uses a lowercase 'a' in "fruitacid"; kept capitalised alias for safety.
+    "tasteClockFruitacid": "taste_clock_fruitacid",
     "tasteClockFruitAcid": "taste_clock_fruitacid",
     "tasteClockRoughness": "taste_clock_roughness",
     "tasteClockSmokiness": "taste_clock_smokiness",
@@ -110,6 +116,8 @@ FIELD_MAP: dict[str, str] = {
     "allergens": "allergens",
     "additives": "additives",
     "additionalInformation": "additional_information",
+    # API uses the longer name today; short form kept as an alias.
+    "didYouKnowInformation": "did_you_know",
     "didYouKnow": "did_you_know",
     # Labels / flags
     "isOrganic": "is_organic",
@@ -133,10 +141,14 @@ FIELD_MAP: dict[str, str] = {
     "isFsAssortment": "is_fs_assortment",
     "isTsAssortment": "is_ts_assortment",
     "isTseAssortment": "is_tse_assortment",
+    "isTsLsAssortment": "is_tsls_assortment",
     "isTslsAssortment": "is_tsls_assortment",
     "isTssAssortment": "is_tss_assortment",
     "isTstAssortment": "is_tst_assortment",
     "isTsvAssortment": "is_tsv_assortment",
+    # API casings isFsTsAssortment / isTsLsAssortment today; older lower-case
+    # variants kept as aliases.
+    "isFsTsAssortment": "is_fsts_assortment",
     "isFstsAssortment": "is_fsts_assortment",
     "isWebLaunch": "is_web_launch",
     "isNews": "is_news",
@@ -147,10 +159,16 @@ FIELD_MAP: dict[str, str] = {
     "isTemporaryOutOfStock": "is_temporary_out_of_stock",
     "completelyOutOfStockDate": "completely_out_of_stock_date",
     "isSupplierNotAvailable": "is_supplier_not_available",
+    "isSupplierTemporaryNotAvailable": "is_supplier_temp_not_available",
     "isSupplierTempNotAvailable": "is_supplier_temp_not_available",
     "supplierNotAvailableDate": "supplier_not_available_date",
-    "supplierTempNotAvailableDate": "supplier_temp_not_available_date",
+    # API dropped the "Date" suffix on back_in_stock and renamed
+    # supplierTemp* to supplierTemporary*. Aliases keep the older names
+    # working in case a cached response still carries them.
+    "backInStockAtSupplier": "back_in_stock_at_supplier",
     "backInStockAtSupplierDate": "back_in_stock_at_supplier",
+    "supplierTemporaryNotAvailableDate": "supplier_temp_not_available_date",
+    "supplierTempNotAvailableDate": "supplier_temp_not_available_date",
     "isOutOfStockAtDepot": "is_out_of_stock_at_depot",
     "isDepotDelivered": "is_depot_delivered",
     "customerOrderSupplySource": "customer_order_supply_source",
