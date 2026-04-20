@@ -132,3 +132,90 @@ async def test_site_stores_returns_list_and_handles_wrapped_shape() -> None:
     async with SBApiClient(api_key="k", base_url=BASE) as api:
         rows = await api.site_stores()
     assert rows == [{"siteId": "1701"}]
+
+
+# ── Key refresh on 401 ────────────────────────────────────────────────────
+
+
+@respx.mock
+async def test_401_triggers_refresh_and_retry_then_succeeds() -> None:
+    route = respx.get(f"{BASE}/sb-api-ecommerce/v1/productsearch/search")
+    route.side_effect = [
+        httpx.Response(401),
+        httpx.Response(200, json={"products": [{"productNumber": "1"}]}),
+    ]
+
+    async def refresh() -> str:
+        return "fresh-key"
+
+    async with SBApiClient(
+        api_key="stale-key",
+        base_url=BASE,
+        retry_attempts=2,
+        key_refresher=refresh,
+    ) as api:
+        body = await api.search_catalog(page=1)
+
+    assert body["products"][0]["productNumber"] == "1"
+    assert route.call_count == 2
+    # Second call must carry the fresh key in the header.
+    retry_req = route.calls[-1].request
+    assert retry_req.headers["Ocp-Apim-Subscription-Key"] == "fresh-key"
+    # And the client's stored key was updated.
+    assert api.api_key == "fresh-key"
+
+
+@respx.mock
+async def test_401_without_refresher_raises_immediately() -> None:
+    respx.get(f"{BASE}/sb-api-ecommerce/v1/productsearch/search").mock(
+        return_value=httpx.Response(401)
+    )
+    async with SBApiClient(api_key="bad", base_url=BASE, retry_attempts=3) as api:
+        with pytest.raises(AuthenticationError):
+            await api.search_catalog(page=1)
+
+
+@respx.mock
+async def test_401_refresh_returning_same_key_raises() -> None:
+    respx.get(f"{BASE}/sb-api-ecommerce/v1/productsearch/search").mock(
+        return_value=httpx.Response(401)
+    )
+
+    async def refresh() -> str:
+        return "same-key"
+
+    async with SBApiClient(
+        api_key="same-key",
+        base_url=BASE,
+        key_refresher=refresh,
+    ) as api:
+        with pytest.raises(AuthenticationError):
+            await api.search_catalog(page=1)
+
+
+@respx.mock
+async def test_401_refresh_then_still_401_raises() -> None:
+    respx.get(f"{BASE}/sb-api-ecommerce/v1/productsearch/search").mock(
+        return_value=httpx.Response(401)
+    )
+
+    async def refresh() -> str:
+        return "fresh-but-still-wrong"
+
+    async with SBApiClient(api_key="stale", base_url=BASE, key_refresher=refresh) as api:
+        with pytest.raises(AuthenticationError):
+            await api.search_catalog(page=1)
+
+
+@respx.mock
+async def test_refresh_failure_does_not_mask_original_auth_error() -> None:
+    respx.get(f"{BASE}/sb-api-ecommerce/v1/productsearch/search").mock(
+        return_value=httpx.Response(401)
+    )
+
+    async def refresh() -> str:
+        raise RuntimeError("extractor blew up")
+
+    async with SBApiClient(api_key="stale", base_url=BASE, key_refresher=refresh) as api:
+        with pytest.raises(AuthenticationError):
+            await api.search_catalog(page=1)

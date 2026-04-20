@@ -34,6 +34,10 @@ async def run_scheduler(*, settings: Settings, db: DB, logger: Any) -> None:
 
     api_key = await _get_api_key(settings, logger)
 
+    async def _refresh_key() -> str:
+        cfg = await extract_config(app_base_url=settings.app_base_url, logger=logger)
+        return cfg.api_key
+
     async with (
         SBApiClient(
             api_key=api_key,
@@ -41,6 +45,8 @@ async def run_scheduler(*, settings: Settings, db: DB, logger: Any) -> None:
             app_base_url=settings.app_base_url,
             max_concurrent=settings.sync_concurrency,
             logger=logger,
+            # Only wire up refresh when the key came from the extractor.
+            key_refresher=None if settings.api_key else _refresh_key,
         ) as api,
         EmbeddingClient(
             url=settings.embed_url, model=settings.embed_model, logger=logger

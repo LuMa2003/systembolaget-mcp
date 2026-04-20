@@ -8,7 +8,8 @@ network errors). Auth-class failures (401/403) bypass retry and raise
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping
 from types import TracebackType
 from typing import Any, Self, cast
 
@@ -24,6 +25,8 @@ from sb_stack.errors import (
     ServerError,
     SystembolagetAPIError,
 )
+
+KeyRefresher = Callable[[], Awaitable[str]]
 
 DEFAULT_TIMEOUT_S = 30.0
 DEFAULT_MAX_CONCURRENT = 5
@@ -67,6 +70,7 @@ class SBApiClient:
         retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
         http_client: httpx.AsyncClient | None = None,
         logger: Any | None = None,
+        key_refresher: KeyRefresher | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url
@@ -75,6 +79,9 @@ class SBApiClient:
         self._limiter = ConcurrencyLimiter(max_concurrent)
         self._retry_attempts = retry_attempts
         self._log = logger
+        self._key_refresher = key_refresher
+        # Single-flight lock so parallel 401s only trigger one extraction.
+        self._refresh_lock = asyncio.Lock()
         self._owned_client = http_client is None
         self._client = http_client or httpx.AsyncClient(
             timeout=timeout_s,
@@ -205,6 +212,46 @@ class SBApiClient:
         url: str,
         *,
         params: Mapping[str, str | int | bool] | None = None,
+    ) -> Any:
+        try:
+            return await self._get_json_inner(url, params=params)
+        except AuthenticationError:
+            # docs/10 §Status-code handling: one 401/403 → force-refresh key → retry.
+            if self._key_refresher is None:
+                raise
+            refreshed = await self._try_refresh_key()
+            if not refreshed:
+                raise
+            return await self._get_json_inner(url, params=params)
+
+    async def _try_refresh_key(self) -> bool:
+        """Single-flight key refresh. Returns True if we got a different key."""
+        assert self._key_refresher is not None
+        async with self._refresh_lock:
+            try:
+                new_key = await self._key_refresher()
+            except Exception as e:  # noqa: BLE001 — refresh must not crash the call
+                if self._log is not None:
+                    self._log.warning("api_key_refresh_failed", error=repr(e))
+                return False
+            if new_key == self.api_key:
+                if self._log is not None:
+                    self._log.warning(
+                        "api_key_refresh_returned_same_key",
+                        key_prefix=new_key[:8],
+                    )
+                return False
+            self.api_key = new_key
+            self._client.headers["Ocp-Apim-Subscription-Key"] = new_key
+            if self._log is not None:
+                self._log.info("api_key_refreshed", key_prefix=new_key[:8])
+            return True
+
+    async def _get_json_inner(
+        self,
+        url: str,
+        *,
+        params: Mapping[str, str | int | bool] | None,
     ) -> Any:
         async def _once() -> httpx.Response:
             if self._log is not None:

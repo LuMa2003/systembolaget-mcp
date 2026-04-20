@@ -44,6 +44,11 @@ async def _run_once(
     reason: str,
 ) -> SyncRunResult:
     api_key = await _resolve_api_key(settings, logger)
+
+    async def _refresh_key() -> str:
+        cfg = await extract_config(app_base_url=settings.app_base_url, logger=logger)
+        return cfg.api_key
+
     async with (
         SBApiClient(
             api_key=api_key,
@@ -51,6 +56,10 @@ async def _run_once(
             app_base_url=settings.app_base_url,
             max_concurrent=settings.sync_concurrency,
             logger=logger,
+            # Only wire up refresh when we're using the extractor (env-
+            # provided keys are user-managed; refreshing from the frontend
+            # would overwrite the user's explicit choice).
+            key_refresher=None if settings.api_key else _refresh_key,
         ) as api,
         EmbeddingClient(
             url=settings.embed_url,
