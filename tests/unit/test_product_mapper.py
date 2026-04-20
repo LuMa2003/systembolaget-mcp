@@ -55,3 +55,57 @@ def test_tracked_fields_nonempty() -> None:
 def test_field_hash_is_deterministic() -> None:
     row = {"price_incl_vat": 100, "is_discontinued": False}
     assert field_hash(row) == field_hash(row)
+
+
+# ── <N obfuscation coercion ──────────────────────────────────────────────
+
+
+def test_html_encoded_lt_becomes_none_for_int_column() -> None:
+    # availableNumberOfStores = "&lt;3" → None
+    row = map_product({"productNumber": "1", "availableNumberOfStores": "&lt;3"})
+    assert row["available_number_of_stores"] is None
+
+
+def test_html_encoded_lt_becomes_none_for_decimal_column() -> None:
+    # alcoholPercentage = "&lt;0,3" (Swedish decimal) → None
+    row = map_product({"productNumber": "1", "alcoholPercentage": "&lt;0,3"})
+    assert row["alcohol_percentage"] is None
+
+
+def test_raw_lt_symbol_also_coerced() -> None:
+    # Same behaviour if the API ever stops HTML-encoding.
+    row = map_product({"productNumber": "1", "availableNumberOfStores": "<3"})
+    assert row["available_number_of_stores"] is None
+
+
+def test_greater_than_also_coerced() -> None:
+    row = map_product({"productNumber": "1", "alcoholPercentage": "&gt;99,9"})
+    assert row["alcohol_percentage"] is None
+
+
+def test_normal_numeric_values_pass_through() -> None:
+    row = map_product(
+        {
+            "productNumber": "1",
+            "availableNumberOfStores": 12,
+            "alcoholPercentage": 13.5,
+            "priceInclVat": 149.0,
+            "tasteClockBody": 8,
+        }
+    )
+    assert row["available_number_of_stores"] == 12
+    assert row["alcohol_percentage"] == 13.5
+    assert row["price_incl_vat"] == 149.0
+    assert row["taste_clock_body"] == 8
+
+
+def test_null_numeric_stays_null() -> None:
+    row = map_product({"productNumber": "1", "availableNumberOfStores": None})
+    assert row["available_number_of_stores"] is None
+
+
+def test_legitimate_numeric_string_passes_through_for_duckdb_cast() -> None:
+    # "13.5" isn't obfuscated, just string-typed. Leave it; DuckDB's
+    # implicit string→float cast handles it on INSERT.
+    row = map_product({"productNumber": "1", "alcoholPercentage": "13.5"})
+    assert row["alcohol_percentage"] == "13.5"

@@ -14,7 +14,9 @@ migration bump since embedded text (and thus source_hash) would shift.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
+import re
 from typing import Any
 
 # API camelCase → DB snake_case. Only fields we persist.
@@ -205,6 +207,46 @@ TRACKED_FIELDS: tuple[str, ...] = (
 # to DuckDB for a VARCHAR[] column.
 _LIST_COLUMNS: frozenset[str] = frozenset({"taste_symbols", "grapes"})
 
+# Columns the DB stores as INT32 / TINYINT / DECIMAL. The detail endpoint
+# obfuscates small values as HTML-entity-encoded strings ("&lt;3" for
+# availableNumberOfStores, "&lt;0,3" for alcoholPercentage on alkoholfritt)
+# to avoid revealing exact low counts. Those strings can't be cast to a
+# numeric column, so we normalise them to None on the way in — losing the
+# exact value is acceptable (they're already censored upstream) and far
+# better than a full-transaction abort.
+_NUMERIC_COLUMNS: frozenset[str] = frozenset(
+    {
+        "volume_ml",
+        "packaging_co2_g_per_l",
+        "parcel_fill_factor",
+        "restricted_parcel_qty",
+        "alcohol_percentage",
+        "sugar_content",
+        "sugar_content_g_per_100ml",
+        "standard_drinks",
+        "price_incl_vat",
+        "price_incl_vat_excl_recycle",
+        "price_excl_vat",
+        "recycle_fee",
+        "comparison_price",
+        "prior_price",
+        "vat_code",
+        "taste_clock_body",
+        "taste_clock_bitter",
+        "taste_clock_sweetness",
+        "taste_clock_fruitacid",
+        "taste_clock_roughness",
+        "taste_clock_smokiness",
+        "taste_clock_casque",
+        "available_number_of_stores",
+        "rating",
+    }
+)
+
+# Matches a leading < or > (possibly HTML-entity-encoded) followed by a number,
+# which is how Systembolaget obfuscates low counts / trace alcohol percentages.
+_OBFUSCATED_NUMBER_RE = re.compile(r"^\s*[<>]\s*[\d.,]+\s*$")
+
 # API aliases for list fields: when the primary camelCase key is a string
 # but a `*List` sibling is an array, prefer the sibling.
 _LIST_ARRAY_ALIASES: dict[str, str] = {
@@ -230,9 +272,31 @@ def map_product(payload: dict[str, Any]) -> dict[str, Any]:
         col = FIELD_MAP.get(k)
         if col is None:
             continue
-        value = _coerce_list(v, array_sibling=list_arrays.get(k)) if col in _LIST_COLUMNS else v
+        if col in _LIST_COLUMNS:
+            value: Any = _coerce_list(v, array_sibling=list_arrays.get(k))
+        elif col in _NUMERIC_COLUMNS:
+            value = _coerce_numeric(v)
+        else:
+            value = v
         row[col] = value
     return row
+
+
+def _coerce_numeric(value: Any) -> Any:
+    """Pass numeric values through; strip HTML-entity obfuscations ("&lt;3",
+    "&gt;0,3") by coercing them to None. Non-numeric strings that look like
+    legitimate numbers are left alone for DuckDB to coerce on the way in —
+    DuckDB's implicit string→numeric cast handles "123.45" just fine."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float, bool)):
+        return value
+    if isinstance(value, str):
+        decoded = html.unescape(value).strip()
+        if _OBFUSCATED_NUMBER_RE.match(decoded):
+            return None
+        return decoded
+    return value
 
 
 def _coerce_list(value: Any, *, array_sibling: list[Any] | None) -> Any:
