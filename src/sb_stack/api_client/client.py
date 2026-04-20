@@ -63,6 +63,7 @@ class SBApiClient:
         self,
         *,
         api_key: str,
+        api_key_mobile: str | None = None,
         base_url: str = "https://api-extern.systembolaget.se",
         app_base_url: str = "https://www.systembolaget.se",
         max_concurrent: int = DEFAULT_MAX_CONCURRENT,
@@ -73,6 +74,9 @@ class SBApiClient:
         key_refresher: KeyRefresher | None = None,
     ) -> None:
         self.api_key = api_key
+        # Mobile namespace takes its own key when supplied; falls back to the
+        # ecommerce key when the caller only has one (old single-key flow).
+        self.api_key_mobile = api_key_mobile or api_key
         self.base_url = base_url
         self.app_base_url = app_base_url
         self.paths = Paths(base_url)
@@ -83,14 +87,19 @@ class SBApiClient:
         # Single-flight lock so parallel 401s only trigger one extraction.
         self._refresh_lock = asyncio.Lock()
         self._owned_client = http_client is None
+        # We don't seed the Ocp-Apim-Subscription-Key header on the session
+        # anymore — the key is per-request because ecommerce and mobile use
+        # different subscription keys.
+        base_headers = {
+            "Origin": self.app_base_url,
+            "Accept": "application/json",
+        }
         self._client = http_client or httpx.AsyncClient(
             timeout=timeout_s,
-            headers=self._default_headers(),
+            headers=base_headers,
         )
-        # If caller passed a pre-built client, overlay our headers so they
-        # don't forget the subscription key.
         if http_client is not None:
-            self._client.headers.update(self._default_headers())
+            self._client.headers.update(base_headers)
 
     # ── Context manager ──────────────────────────────────────────────────
     async def __aenter__(self) -> Self:
@@ -201,11 +210,19 @@ class SBApiClient:
     # ── Low-level HTTP helpers ───────────────────────────────────────────
 
     def _default_headers(self) -> dict[str, str]:
+        # Kept for backwards compat — emits the ecommerce key only. Per-
+        # request key selection now goes through _key_for_url.
         return {
             "Ocp-Apim-Subscription-Key": self.api_key,
             "Origin": self.app_base_url,
             "Accept": "application/json",
         }
+
+    def _key_for_url(self, url: str) -> str:
+        """Ecommerce and mobile namespaces have independent subscription keys."""
+        if "/sb-api-mobile/" in url:
+            return self.api_key_mobile
+        return self.api_key
 
     async def _get_json(
         self,
@@ -216,7 +233,13 @@ class SBApiClient:
         try:
             return await self._get_json_inner(url, params=params)
         except AuthenticationError:
-            # docs/10 §Status-code handling: one 401/403 → force-refresh key → retry.
+            # Only the ecommerce key has an automated recovery path — the
+            # extractor reads it from the frontend JS. The mobile key lives
+            # only in the mobile app and has no scrape surface, so a mobile
+            # 401 propagates immediately for the orchestrator to surface
+            # via ntfy.
+            if "/sb-api-mobile/" in url:
+                raise
             if self._key_refresher is None:
                 raise
             refreshed = await self._try_refresh_key()
@@ -242,7 +265,8 @@ class SBApiClient:
                     )
                 return False
             self.api_key = new_key
-            self._client.headers["Ocp-Apim-Subscription-Key"] = new_key
+            # Per-request headers now carry the key via _key_for_url, so no
+            # session header to update.
             if self._log is not None:
                 self._log.info("api_key_refreshed", key_prefix=new_key[:8])
             return True
@@ -256,8 +280,9 @@ class SBApiClient:
         async def _once() -> httpx.Response:
             if self._log is not None:
                 self._log.debug("api_request_started", url=url, method="GET")
+            headers = {"Ocp-Apim-Subscription-Key": self._key_for_url(url)}
             async with self._limiter.acquire():
-                resp = await self._client.get(url, params=params)
+                resp = await self._client.get(url, params=params, headers=headers)
             self._raise_for_status(resp)
             if self._log is not None:
                 self._log.debug(

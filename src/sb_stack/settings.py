@@ -40,8 +40,17 @@ class Settings(BaseSettings):
     main_store: str = "1701"
 
     # ── Systembolaget API ────────────────────────────────────────────────
+    # Ecommerce APIM key — extracted from the public frontend JS at runtime
+    # when unset. Covers /sb-api-ecommerce/v1/*. See api_client.config_extractor.
     api_key: str | None = None
     api_key_cache_ttl_days: int = 7
+    # Mobile APIM key — required for /sb-api-mobile/v1/* (stock + taxonomy).
+    # Default is a long-lived key discovered by C4illin/systembolaget-data and
+    # still accepted server-side; it is NOT in the web frontend, so if
+    # Systembolaget revokes it we'll start 401'ing on mobile endpoints only.
+    # Replace with a fresh key captured from the mobile app if that happens —
+    # the orchestrator fires a one-shot ntfy alert when it does.
+    api_key_mobile: str = "cfc702aed3094c86b92d6d4ff7a54c84"
     api_base_url: str = "https://api-extern.systembolaget.se"
     app_base_url: str = "https://www.systembolaget.se"
 

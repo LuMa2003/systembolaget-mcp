@@ -219,3 +219,60 @@ async def test_refresh_failure_does_not_mask_original_auth_error() -> None:
     async with SBApiClient(api_key="stale", base_url=BASE, key_refresher=refresh) as api:
         with pytest.raises(AuthenticationError):
             await api.search_catalog(page=1)
+
+
+# ── Per-namespace subscription keys ──────────────────────────────────────
+
+
+@respx.mock
+async def test_ecommerce_and_mobile_requests_carry_different_keys() -> None:
+    eco = respx.get(f"{BASE}/sb-api-ecommerce/v1/productsearch/search").mock(
+        return_value=httpx.Response(200, json={"products": []})
+    )
+    mob = respx.get(f"{BASE}/sb-api-mobile/v1/productsearch/search").mock(
+        return_value=httpx.Response(200, json={"products": []})
+    )
+    async with SBApiClient(api_key="eco-key", api_key_mobile="mob-key", base_url=BASE) as api:
+        await api.search_catalog(page=1)
+        await api.mobile_search_stock(store_id="1701", page=1)
+    assert eco.calls.last.request.headers["Ocp-Apim-Subscription-Key"] == "eco-key"
+    assert mob.calls.last.request.headers["Ocp-Apim-Subscription-Key"] == "mob-key"
+
+
+@respx.mock
+async def test_mobile_401_does_not_trigger_ecommerce_refresh() -> None:
+    # The mobile key isn't extractable from the web frontend, so a mobile
+    # 401 must NOT invoke the refresher — it'd waste an extractor call and
+    # might mask the real problem.
+    respx.get(f"{BASE}/sb-api-mobile/v1/productsearch/search").mock(
+        return_value=httpx.Response(401)
+    )
+    refresh_calls: list[str] = []
+
+    async def refresh() -> str:
+        refresh_calls.append("x")
+        return "should-not-be-used"
+
+    async with SBApiClient(
+        api_key="eco-key",
+        api_key_mobile="stale-mob",
+        base_url=BASE,
+        retry_attempts=2,
+        key_refresher=refresh,
+    ) as api:
+        with pytest.raises(AuthenticationError):
+            await api.mobile_search_stock(store_id="1701", page=1)
+    assert refresh_calls == []
+    # Mobile key unchanged — no accidental mutation from the refresh path.
+    assert api.api_key_mobile == "stale-mob"
+
+
+@respx.mock
+async def test_mobile_key_falls_back_to_ecommerce_when_not_supplied() -> None:
+    route = respx.get(f"{BASE}/sb-api-mobile/v1/productsearch/search").mock(
+        return_value=httpx.Response(200, json={"products": []})
+    )
+    async with SBApiClient(api_key="single-key", base_url=BASE) as api:
+        await api.mobile_search_stock(store_id="1701", page=1)
+    # Only one key supplied → used for both namespaces (single-key legacy path).
+    assert route.calls.last.request.headers["Ocp-Apim-Subscription-Key"] == "single-key"

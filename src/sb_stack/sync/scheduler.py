@@ -41,11 +41,14 @@ async def run_scheduler(*, settings: Settings, db: DB, logger: Any) -> None:
     async with (
         SBApiClient(
             api_key=api_key,
+            api_key_mobile=settings.api_key_mobile,
             base_url=settings.api_base_url,
             app_base_url=settings.app_base_url,
             max_concurrent=settings.sync_concurrency,
             logger=logger,
             # Only wire up refresh when the key came from the extractor.
+            # Refresh only covers the ecommerce key — mobile has no scrape
+            # surface, so a mobile 401 propagates for ntfy to handle.
             key_refresher=None if settings.api_key else _refresh_key,
         ) as api,
         EmbeddingClient(

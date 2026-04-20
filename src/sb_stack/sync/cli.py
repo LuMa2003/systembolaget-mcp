@@ -52,13 +52,15 @@ async def _run_once(
     async with (
         SBApiClient(
             api_key=api_key,
+            api_key_mobile=settings.api_key_mobile,
             base_url=settings.api_base_url,
             app_base_url=settings.app_base_url,
             max_concurrent=settings.sync_concurrency,
             logger=logger,
             # Only wire up refresh when we're using the extractor (env-
             # provided keys are user-managed; refreshing from the frontend
-            # would overwrite the user's explicit choice).
+            # would overwrite the user's explicit choice). The refresh only
+            # applies to the ecommerce key; mobile has no self-heal path.
             key_refresher=None if settings.api_key else _refresh_key,
         ) as api,
         EmbeddingClient(

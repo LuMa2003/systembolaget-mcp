@@ -230,11 +230,7 @@ def map_product(payload: dict[str, Any]) -> dict[str, Any]:
         col = FIELD_MAP.get(k)
         if col is None:
             continue
-        value = (
-            _coerce_list(v, array_sibling=list_arrays.get(k))
-            if col in _LIST_COLUMNS
-            else v
-        )
+        value = _coerce_list(v, array_sibling=list_arrays.get(k)) if col in _LIST_COLUMNS else v
         row[col] = value
     return row
 

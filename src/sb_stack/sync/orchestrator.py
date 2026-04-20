@@ -98,6 +98,24 @@ async def run_sync(  # noqa: PLR0915 — the phase sequencer is deliberately lin
                 duration_ms=phase_a.duration_ms,
                 counts=phase_a.counts,
             )
+            # If the mobile namespace returned 401, fire a one-shot ntfy so
+            # the operator knows to rotate SB_API_KEY_MOBILE. Cooldown'd
+            # inside AlertManager, so a persistent revocation doesn't page
+            # every night.
+            if _mobile_auth_failed(phase_a):
+                try:
+                    await AlertManager(settings, logger=logger).fire_critical(
+                        key="mobile_api_key_revoked",
+                        title="Systembolaget sync: mobile API key rejected",
+                        message=(
+                            "SB_API_KEY_MOBILE returned 401 for "
+                            "/sb-api-mobile/v1/* — stock + taxonomy will stay "
+                            "empty until a fresh key is captured from the "
+                            "Systembolaget mobile app and set in env."
+                        ),
+                    )
+                except Exception as e:  # noqa: BLE001 — notifier must not break sync
+                    logger.warning("mobile_auth_alert_failed", error=repr(e))
 
             # Phase B
             logger.info("phase_started", run_id=run_id, phase=Phase.PERSIST.value)
@@ -242,6 +260,21 @@ async def run_sync(  # noqa: PLR0915 — the phase sequencer is deliberately lin
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
+
+
+def _mobile_auth_failed(phase_a: PhaseResult) -> bool:
+    """True if Phase A hit a 401/403 against the /sb-api-mobile/* namespace.
+
+    We key off the error's .cause (AuthenticationError carries status_code
+    and url) to avoid substring-matching log strings.
+    """
+    from sb_stack.errors import AuthenticationError  # noqa: PLC0415
+
+    for err in phase_a.errors:
+        cause = err.cause
+        if isinstance(cause, AuthenticationError) and "/sb-api-mobile/" in cause.url:
+            return True
+    return False
 
 
 def _start_run_row(db: DB, *, reason: str, full_refresh: bool) -> int:

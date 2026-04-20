@@ -21,11 +21,33 @@ Origin:                    https://www.systembolaget.se
 Accept:                    application/json
 ```
 
-Key values observed in the wild (both valid as of 2026-04-19):
-- `8d39a7340ee7439f8b4c1e995c8f3e4a` (current, from frontend build today)
-- `cfc702aed3094c86b92d6d4ff7a54c84` (previous, still accepted)
+The two namespaces take **independent** subscription keys. Values observed
+as of 2026-04-20 (empirically tested against both namespaces):
 
-Multiple keys accepted in parallel suggests Systembolaget operates a grace window on rotations — good for our sync's resilience.
+| key | origin | ecommerce | mobile |
+|---|---|---|---|
+| `8d39a7340ee7439f8b4c1e995c8f3e4a` | current web frontend (`NEXT_PUBLIC_API_KEY_APIM`) | ✅ 200 | ❌ 401 |
+| `0cc21a8690754a8089f9213689732f26` | current web frontend (`NEXT_PUBLIC_API_KEY_EPISERVER`) | ❌ 401 | ❌ 401 |
+| `cfc702aed3094c86b92d6d4ff7a54c84` | hardcoded in [C4illin/systembolaget-data](https://github.com/C4illin/systembolaget-data)'s `getAllProducts.js`; not in the web frontend | ✅ 200 | ✅ 200 |
+| `182bda928b394b209d3f05b0ed7c27ee` | captured from the Systembolaget mobile app | ❌ 401 | ✅ 200 |
+
+Our design splits accordingly:
+
+- `SB_API_KEY` (ecommerce): extracted from the web frontend at startup if
+  unset — the extractor finds `8d39a…` today.
+- `SB_API_KEY_MOBILE` (mobile): user-supplied. Defaults to `cfc702…` since
+  it's the most universally-accepted key we know. The extractor **cannot**
+  scrape this key — it lives only in the mobile app and, historically,
+  third-party repos. If Systembolaget revokes the default, only
+  `/sb-api-mobile/v1/*` (stock + taxonomy) break — ecommerce keeps working
+  — and the orchestrator fires a one-shot ntfy alert telling the operator
+  to capture a fresh mobile key.
+
+Previous versions of this doc suggested the two namespaces shared a single
+APIM key and that `cfc702…` was a rotated-out predecessor of `8d39a…`.
+Both claims were wrong — the keys are parallel, not sequential, and
+`cfc702…` was never rotated in the first place (it just happens to be a
+long-lived cross-namespace key that Systembolaget hasn't revoked).
 
 ## Key extraction
 
