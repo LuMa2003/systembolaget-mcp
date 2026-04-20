@@ -7,6 +7,7 @@ full refresh.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -86,34 +87,62 @@ async def run_phase_d(  # noqa: PLR0912 — the candidate-gathering + batching l
         )
 
     batch_size = settings.embed_client_batch_size
+    parallel = max(1, settings.embed_client_parallel)
+
+    # Pre-chunk into client-sized batches, then drive N in parallel through
+    # the embed server per round. Between rounds we UPSERT the returned
+    # vectors under the single writer connection — DuckDB is single-writer,
+    # and the DB-write stage is fast enough (~ms/row) that serialising it
+    # after each gather doesn't re-introduce GPU idle time to matter.
+    #
+    # Per-batch exceptions are caught so one bad batch doesn't cancel the
+    # siblings fired together with it.
+    async def _one_batch(
+        start: int, batch: list[tuple[str, str, str, str]]
+    ) -> tuple[
+        int, list[tuple[str, str, str, str]], list[list[float]] | None, BaseException | None
+    ]:
+        texts = [t for (_, t, _, _) in batch]
+        try:
+            vectors = await embed_client.embed(texts)
+        except EmbeddingError as e:
+            return start, batch, None, e
+        return start, batch, vectors, None
+
+    chunks: list[tuple[int, list[tuple[str, str, str, str]]]] = [
+        (i, to_embed[i : i + batch_size]) for i in range(0, len(to_embed), batch_size)
+    ]
+
     with db.writer() as conn:
-        for start in range(0, len(to_embed), batch_size):
-            batch = to_embed[start : start + batch_size]
-            texts = [t for (_, t, _, _) in batch]
-            try:
-                vectors = await embed_client.embed(texts)
-            except EmbeddingError as e:
-                errors.append(PhaseError(f"embed batch @ {start} failed: {e}", cause=e))
-                counts["failed"] += len(batch)
-                logger.warning("embed_batch_failed", start=start, size=len(batch), error=str(e))
-                continue
-            for vec in vectors:
-                if len(vec) != settings.embed_dim:
-                    raise CatastrophicError(
-                        f"embed service returned dim {len(vec)}, "
-                        f"expected SB_EMBED_DIM={settings.embed_dim}"
+        for round_start in range(0, len(chunks), parallel):
+            round_chunks = chunks[round_start : round_start + parallel]
+            results = await asyncio.gather(*(_one_batch(i, b) for i, b in round_chunks))
+            for start, batch, vectors, err in results:
+                if err is not None:
+                    errors.append(PhaseError(f"embed batch @ {start} failed: {err}", cause=err))
+                    counts["failed"] += len(batch)
+                    logger.warning(
+                        "embed_batch_failed", start=start, size=len(batch), error=str(err)
                     )
-            for (pn, _text, version, new_hash), vec in zip(batch, vectors, strict=True):
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO product_embeddings
-                        (product_number, embedding, source_hash, model_name,
-                         template_version, embedded_at)
-                    VALUES (?, ?, ?, ?, ?, now())
-                    """,
-                    [pn, vec, new_hash, settings.embed_model, version],
-                )
-                counts["embedded"] += 1
+                    continue
+                assert vectors is not None
+                for vec in vectors:
+                    if len(vec) != settings.embed_dim:
+                        raise CatastrophicError(
+                            f"embed service returned dim {len(vec)}, "
+                            f"expected SB_EMBED_DIM={settings.embed_dim}"
+                        )
+                for (pn, _text, version, new_hash), vec in zip(batch, vectors, strict=True):
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO product_embeddings
+                            (product_number, embedding, source_hash, model_name,
+                             template_version, embedded_at)
+                        VALUES (?, ?, ?, ?, ?, now())
+                        """,
+                        [pn, vec, new_hash, settings.embed_model, version],
+                    )
+                    counts["embedded"] += 1
 
     outcome = PhaseOutcome.PARTIAL if errors else PhaseOutcome.OK
     return PhaseResult(

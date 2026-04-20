@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     embed_max_batch: int = 2048  # server hard limit per request
     embed_gpu_batch_size: int = 32  # server internal GPU batching
     embed_client_batch_size: int = 128  # client-side chunking
+    # How many embed batches Phase D fires in parallel. GPU pipelines through
+    # them so the 4090 doesn't sit idle between HTTP round-trips. 4 is a good
+    # sweet spot: model stays warm, VRAM usage bounded, keeps httpx's
+    # connection pool happy.
+    embed_client_parallel: int = 4
 
     # ── MCP ──────────────────────────────────────────────────────────────
     mcp_port: int = 8000
