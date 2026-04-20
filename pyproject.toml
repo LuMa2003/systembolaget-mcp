@@ -53,6 +53,18 @@ packages = ["src/sb_stack"]
 include = ["src/sb_stack", "README.md", "LICENSE"]
 
 # -----------------------------------------------------------------------------
+# uv — pull torch from PyTorch's CUDA 12.4 wheel index so the container
+# doesn't double-install it on top of a pytorch/pytorch base.
+# -----------------------------------------------------------------------------
+[[tool.uv.index]]
+name     = "pytorch-cu124"
+url      = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124" }]
+
+# -----------------------------------------------------------------------------
 # Ruff — lint + format
 # -----------------------------------------------------------------------------
 [tool.ruff]
