@@ -1,0 +1,15 @@
+# E2E test override pulling the published GHCR image (not a local build).
+services:
+  sb-stack:
+    image: ghcr.io/luma2003/systembolaget-mcp:latest
+    environment:
+      - SB_STORE_SUBSET=1701
+      - SB_MAIN_STORE=1701
+      - SB_SYNC_CONCURRENCY=20
+      - SB_LOG_FORMAT=text
+      - SB_LOG_LEVEL=info
+      - SB_FIRST_RUN_ON_BOOTSTRAP=true
+      # Mobile key active — this is the test that validates stock + taxonomy.
+      - SB_API_KEY_MOBILE=cfc702aed3094c86b92d6d4ff7a54c84
+    volumes:
+      - ./dev-data:/data

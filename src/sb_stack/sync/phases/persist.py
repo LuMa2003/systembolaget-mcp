@@ -420,24 +420,35 @@ def _persist_taxonomy(
     if not taxonomy:
         return
     today = now.date()
-    # Shape: {filterGroups: [{name, values: [{value, count}]}]}
-    for group in taxonomy.get("filterGroups", []) or []:
+    # Two response shapes in the wild:
+    #   ecommerce: {"filterGroups": [{name, values: [{value, count}]}]}
+    #   mobile:    [{name, searchModifiers: [{value, count, …}], child: …}]
+    # Normalise to a flat list of groups, and try both value-key names.
+    if isinstance(taxonomy, list):
+        groups: list[dict[str, Any]] = taxonomy
+    else:
+        groups = list(taxonomy.get("filterGroups", []) or [])
+    for group in groups:
         name = group.get("name")
         if not name:
             continue
-        for value in group.get("values", []) or []:
+        # Mobile uses "searchModifiers", ecommerce uses "values".
+        entries: list[dict[str, Any]] = list(
+            group.get("searchModifiers") or group.get("values") or []
+        )
+        for entry in entries:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO filter_taxonomy
                     (captured_at, filter_name, value, count)
                 VALUES (?, ?, ?, ?)
                 """,
-                [today, name, str(value.get("value")), int(value.get("count") or 0)],
+                [today, name, str(entry.get("value")), int(entry.get("count") or 0)],
             )
         if name == "UpcomingLaunches":
-            for value in group.get("values", []) or []:
+            for entry in entries:
                 try:
-                    launch = date.fromisoformat(str(value.get("value")))
+                    launch = date.fromisoformat(str(entry.get("value")))
                 except (TypeError, ValueError):
                     continue
                 conn.execute(
@@ -446,5 +457,5 @@ def _persist_taxonomy(
                         (launch_date, observed_at, product_count)
                     VALUES (?, ?, ?)
                     """,
-                    [launch, today, int(value.get("count") or 0)],
+                    [launch, today, int(entry.get("count") or 0)],
                 )
