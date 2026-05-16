@@ -107,3 +107,20 @@ def _merge_detail_into_product(db: DB, pn: str, detail: dict[str, Any]) -> None:
             f"UPDATE products SET {set_sql} WHERE product_number = ?",
             [*row.values(), pn],
         )
+        # Populate product_variants from the detail-only sameProductDifferentSizes array.
+        variants = detail.get("sameProductDifferentSizes") or []
+        if variants:
+            conn.execute("DELETE FROM product_variants WHERE product_number = ?", [pn])
+            for v in variants:
+                vpn = v.get("productNumber")
+                if not vpn:
+                    continue
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO product_variants
+                        (product_number, variant_product_number,
+                         variant_volume_ml, variant_bottle_text)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [pn, vpn, int(v["volume"]) if v.get("volume") else None, v.get("bottleText")],
+                )

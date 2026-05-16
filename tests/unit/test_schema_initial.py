@@ -26,8 +26,8 @@ def settings(tmp_path: Path) -> Settings:
 def test_initial_migration_applies_to_empty_db(settings: Settings) -> None:
     runner = MigrationRunner(DB(settings), settings, _SilentLog())
     applied = runner.run()
-    # 001_initial.sql + 002_detail_fetch_timestamp.sql
-    assert applied == 2
+    # 001_initial.sql + 002_detail_fetch_timestamp.sql + 003_new_api_fields.sql
+    assert applied == 3
 
     # Sanity-check a representative set of tables exists.
     expected_tables = {
@@ -58,7 +58,7 @@ def test_initial_migration_applies_to_empty_db(settings: Settings) -> None:
 
 def test_initial_migration_is_idempotent(settings: Settings) -> None:
     runner = MigrationRunner(DB(settings), settings, _SilentLog())
-    assert runner.run() == 2
+    assert runner.run() == 3
     assert runner.run() == 0
 
 

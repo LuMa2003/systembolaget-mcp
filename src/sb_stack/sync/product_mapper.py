@@ -186,6 +186,16 @@ FIELD_MAP: dict[str, str] = {
     "originalSellStartDate": "original_sell_start_date",
     "sellStartTime": "sell_start_time",
     "tastingDate": "tasting_date",
+    # Fields added in migration 003
+    "originLevel4": "origin_level_4",
+    "originLevel5": "origin_level_5",
+    "isDefaultProduct": "is_default_product",
+    "isHidden": "is_hidden",
+    "isSearchable": "is_searchable",
+    "isInAnyStoreSearchAssortment": "is_in_any_store_search_assortment",
+    "isInSelectedAssortment": "is_in_selected_assortment",
+    "preservable": "preservable",
+    "isDKI": "is_dki",
 }
 
 # Tracked fields (whitelist) — change → append to product_history.
