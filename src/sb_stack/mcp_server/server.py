@@ -17,6 +17,7 @@ from sb_stack.db import DB, MigrationRunner
 from sb_stack.embed import EmbeddingClient
 from sb_stack.logging import configure_logging, get_logger
 from sb_stack.mcp_server.context import AppContext, set_context
+from sb_stack.mcp_server.error_middleware import SwedishErrorMiddleware
 from sb_stack.mcp_server.tools import register_all
 from sb_stack.settings import Settings
 
@@ -67,6 +68,7 @@ def create_server(settings: Settings) -> FastMCP:
         version="0.1.0",
         auth=auth,
     )
+    server.add_middleware(SwedishErrorMiddleware())
     register_all(server)
     log.info("mcp_server_tools_registered", count=10)
     return server

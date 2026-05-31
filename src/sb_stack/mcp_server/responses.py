@@ -70,7 +70,7 @@ class SemanticSearchResult(BaseModel):
 
 class SimilarProductsResult(BaseModel):
     source: Product
-    similar: list[SemanticSearchItem]
+    results: list[SemanticSearchItem]
 
 
 class Variant(BaseModel):
@@ -108,6 +108,7 @@ class CompareRow(BaseModel):
 class CompareResult(BaseModel):
     rows: list[CompareRow]
     products: list[Product]
+    notes: str | None = None
 
 
 class HomeStore(BaseModel):
@@ -139,6 +140,7 @@ class ScheduleEntry(BaseModel):
 class StoreSchedule(BaseModel):
     store: HomeStore
     schedule: list[ScheduleEntry]
+    notes: str | None = None
 
 
 class TaxonomyEntry(BaseModel):
@@ -171,12 +173,40 @@ class SyncStatusResult(BaseModel):
     home_stock_rows: int
     api_key_last_validated: datetime | None = None
     stale: bool
+    summary: str | None = None
+
+
+class ScoreBreakdown(BaseModel):
+    """Per-recommendation scoring decomposition for transparency / debugging.
+
+    All terms are 0..1 where applicable; populated fields depend on what the
+    engine could compute for a given dish. `total` is the blended score used
+    for ranking.
+    """
+
+    usage_similarity: float | None = None
+    taste_clock_fit: float | None = None
+    symbol_match: float | None = None
+    regional_fit: float | None = None
+    total: float | None = None
 
 
 class PairingRecommendation(BaseModel):
     product: Product
     similarity: float
+    # Swedish, user-facing motivation. MUST NOT leak internal scores/floats.
     why: str
+    score_breakdown: ScoreBreakdown | None = None
+
+
+class PairingInterpretation(BaseModel):
+    """How the engine understood the dish — surfaced so a voicing LLM can
+    explain its reasoning in Swedish."""
+
+    dish_summary: str | None = None
+    inferred_taste_symbols: list[str] = Field(default_factory=list)
+    inferred_profile: str | None = None
+    sommelier_reasoning: str | None = None
 
 
 class PairWithDishResult(BaseModel):
@@ -184,3 +214,4 @@ class PairWithDishResult(BaseModel):
     confidence: str = "low"
     dish: str = ""
     notes: str | None = None
+    interpretation: PairingInterpretation | None = None

@@ -95,15 +95,30 @@ class MCPError(SBError):
 
 
 class ProductNotFoundError(MCPError):
-    """No product matches the provided productNumber / nr."""
+    """No product matches the provided productNumber / nr.
+
+    User-facing message is Swedish (project rule). `identifier` may be an
+    article number or a free-text query depending on the calling tool.
+    """
 
     def __init__(self, product_number: str) -> None:
         self.product_number = product_number
-        super().__init__(f"product not found: {product_number}")
+        super().__init__(f"hittar ingen produkt som matchar: {product_number}")
+
+
+class UnknownStoreError(MCPError):
+    """A supplied site_id does not exist in the stores table."""
+
+    def __init__(self, site_id: str) -> None:
+        self.site_id = site_id
+        super().__init__(f"okänd butik: {site_id}")
 
 
 class InvalidInputError(MCPError):
-    """Tool input failed validation beyond what Pydantic catches."""
+    """Tool input failed validation beyond what Pydantic catches.
+
+    The message is surfaced to the end user, so callers MUST pass Swedish.
+    """
 
 
 class DataStalenessError(MCPError):
@@ -112,6 +127,6 @@ class DataStalenessError(MCPError):
     def __init__(self, hours_since_sync: float) -> None:
         self.hours_since_sync = hours_since_sync
         super().__init__(
-            f"data is stale (last sync {hours_since_sync:.1f} h ago); "
-            "run `sb-stack sync` or wait for the scheduler"
+            f"data är inaktuell (senaste synk för {hours_since_sync:.1f} h sedan); "
+            "kör `sb-stack sync` eller vänta på schemaläggaren"
         )
