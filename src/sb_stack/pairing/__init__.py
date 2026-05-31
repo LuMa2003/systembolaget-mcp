@@ -1,14 +1,25 @@
 """Pairing engine — match a dish description to drink recommendations.
 
-This scaffold is the semantic-retrieval core from DISH_PAIRING_DESIGN.md:
-embed the dish text, rank candidates by vector similarity to the Swedish
-`usage` / `taste` / `aroma` fields, optionally bias by taste_symbols,
-and return a diverse top-N. The 8-axis scorer + cultural-pairings
-layer from §7 of the design doc are deliberately left as follow-up
-work — the tool contract is wired and unit-tested, so those layers can
-slot in without MCP-surface changes.
+The engine cannot re-embed in this build, so it re-ranks the embedding
+candidate set with a structured read of the dish: inferred taste_symbols + a
+body target steer scoring over the sommelier `usage` field, a category prior
+suppresses nonsensical picks, and Swedish rationale is grounded in the
+product's own `usage` text. See `DISH_PAIRING_DESIGN.md` §7/§10 for the
+scoring + confidence model this approximates without re-embedding.
 """
 
-from sb_stack.pairing.engine import PairingEngine, Recommendation
+from sb_stack.pairing.engine import (
+    Interpretation,
+    PairingEngine,
+    PairingResult,
+    Recommendation,
+    ScoreBreakdown,
+)
 
-__all__ = ["PairingEngine", "Recommendation"]
+__all__ = [
+    "Interpretation",
+    "PairingEngine",
+    "PairingResult",
+    "Recommendation",
+    "ScoreBreakdown",
+]
