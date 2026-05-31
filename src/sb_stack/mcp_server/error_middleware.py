@@ -11,6 +11,7 @@ Project rule (CLAUDE.md): all end-user text is Swedish; code/logs stay English.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastmcp.exceptions import ToolError
@@ -19,6 +20,8 @@ from mcp import types as mt
 from pydantic import ValidationError
 
 from sb_stack.errors import MCPError
+
+_PREFIX_RE = re.compile(r"^Error calling tool '[^']*':\s*")
 
 _FIELD_LABELS = {
     "limit": "limit",
@@ -42,38 +45,40 @@ def _field_name(loc: tuple[Any, ...]) -> str:
 def _reason(err: dict[str, Any]) -> str:
     t = err.get("type", "")
     ctx = err.get("ctx", {}) or {}
-    match t:
-        case "missing" | "missing_argument":
-            return "är obligatoriskt"
-        case "greater_than_equal":
-            return f"måste vara minst {ctx.get('ge')}"
-        case "less_than_equal":
-            return f"får vara högst {ctx.get('le')}"
-        case "greater_than":
-            return f"måste vara större än {ctx.get('gt')}"
-        case "less_than":
-            return f"måste vara mindre än {ctx.get('lt')}"
-        case "too_short":
-            return f"kräver minst {ctx.get('min_length', ctx.get('actual_length'))} värden"
-        case "too_long":
-            return f"får ha högst {ctx.get('max_length')} värden"
-        case "string_too_short":
-            return "är för kort"
-        case "unexpected_keyword_argument":
-            return "är okänt"
-        case "value_error":
-            # Our own field_validators raise Swedish ValueErrors; reuse the text.
-            msg = err.get("msg", "")
-            return msg.replace("Value error, ", "").strip() or "är ogiltigt"
-        case _:
-            return "är ogiltigt"
+    fixed = {
+        "missing": "är obligatoriskt",
+        "missing_argument": "är obligatoriskt",
+        "string_too_short": "är för kort",
+        "unexpected_keyword_argument": "är okänt",
+    }
+    if t in fixed:
+        return fixed[t]
+    templated = {
+        "greater_than_equal": f"måste vara minst {ctx.get('ge')}",
+        "less_than_equal": f"får vara högst {ctx.get('le')}",
+        "greater_than": f"måste vara större än {ctx.get('gt')}",
+        "less_than": f"måste vara mindre än {ctx.get('lt')}",
+        "too_short": f"kräver minst {ctx.get('min_length', ctx.get('actual_length'))} värden",
+        "too_long": f"får ha högst {ctx.get('max_length')} värden",
+    }
+    if t in templated:
+        return templated[t]
+    if t == "value_error":
+        # Our own field_validators raise Swedish ValueErrors; reuse the text.
+        msg = str(err.get("msg", ""))
+        return msg.replace("Value error, ", "").strip() or "är ogiltigt"
+    return "är ogiltigt"
 
 
 def _to_swedish(exc: ValidationError) -> str:
-    parts = [f"{_field_name(e['loc'])} {_reason(e)}" for e in exc.errors()]
-    # de-dup while preserving order
-    seen: set[str] = set()
-    uniq = [p for p in parts if not (p in seen or seen.add(p))]
+    uniq: list[str] = []
+    for e in exc.errors():
+        reason = _reason(dict(e))
+        # value_error messages (our own field/model validators) are already a
+        # complete Swedish sentence — don't prefix them with the field label.
+        part = reason if e.get("type") == "value_error" else f"{_field_name(e['loc'])} {reason}"
+        if part not in uniq:
+            uniq.append(part)
     return "Ogiltig inmatning: " + "; ".join(uniq) + "."
 
 
@@ -90,3 +95,8 @@ class SwedishErrorMiddleware(Middleware):
         except MCPError as exc:
             # Already-Swedish domain message; drop the English wrapper.
             raise ToolError(str(exc)) from exc
+        except ToolError as exc:
+            # FastMCP wraps tool-raised exceptions (incl. our Swedish MCPError)
+            # as "Error calling tool 'X': <msg>". Strip that English prefix so
+            # the user sees only the Swedish message.
+            raise ToolError(_PREFIX_RE.sub("", str(exc))) from exc
