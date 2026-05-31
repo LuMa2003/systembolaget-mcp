@@ -259,9 +259,7 @@ def _seed_products(db: DB) -> None:
 def test_search_products_filters_by_category(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([search_products])
-    out = rec.tools["search_products"](
-        search_products.SearchInput(category="Vin", include_discontinued=False)
-    )
+    out = rec.tools["search_products"](category="Vin", include_discontinued=False)
     pns = {p.product_number for p in out.results}
     assert pns == {"1001", "1002"}
     assert out.total_count == 2
@@ -270,9 +268,7 @@ def test_search_products_filters_by_category(ctx: AppContext) -> None:
 def test_search_products_in_stock_at_main_filters(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([search_products])
-    out = rec.tools["search_products"](
-        search_products.SearchInput(in_stock_at="main", category="Vin")
-    )
+    out = rec.tools["search_products"](in_stock_at="main", category="Vin")
     pns = {p.product_number for p in out.results}
     assert pns == {"1001"}  # Beta is not stocked at 1701
 
@@ -280,7 +276,7 @@ def test_search_products_in_stock_at_main_filters(ctx: AppContext) -> None:
 def test_search_products_pairs_with_any(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([search_products])
-    out = rec.tools["search_products"](search_products.SearchInput(pairs_with_any=["Kött"]))
+    out = rec.tools["search_products"](pairs_with_any=["Kött"])
     pns = {p.product_number for p in out.results}
     assert pns == {"1002"}
 
@@ -288,7 +284,7 @@ def test_search_products_pairs_with_any(ctx: AppContext) -> None:
 def test_search_products_price_range(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([search_products])
-    out = rec.tools["search_products"](search_products.SearchInput(price_min=100, price_max=200))
+    out = rec.tools["search_products"](price_min=100, price_max=200)
     pns = {p.product_number for p in out.results}
     assert pns == {"1002"}
 
@@ -296,7 +292,7 @@ def test_search_products_price_range(ctx: AppContext) -> None:
 def test_search_products_home_stock_populated(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([search_products])
-    out = rec.tools["search_products"](search_products.SearchInput(category="Vin"))
+    out = rec.tools["search_products"](category="Vin")
     alpha = next(p for p in out.results if p.product_number == "1001")
     assert "1701" in alpha.home_stock
     assert alpha.home_stock["1701"].stock == 7
@@ -308,7 +304,7 @@ def test_search_products_home_stock_populated(ctx: AppContext) -> None:
 def test_get_product_by_number(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([get_product])
-    out = rec.tools["get_product"](get_product.GetProductInput(product_number="1001"))
+    out = rec.tools["get_product"](product_number="1001")
     assert out.product["name_bold"] == "Alpha Röd"
     assert out.home_stock and out.home_stock[0].site_id == "1701"
     assert len(out.image_urls) == 4
@@ -317,18 +313,14 @@ def test_get_product_by_number(ctx: AppContext) -> None:
 def test_compare_products_validates_dupes(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([compare_products])
-    with pytest.raises(Exception, match="at least 2"):
-        rec.tools["compare_products"](
-            compare_products.CompareInput(product_numbers=["1001", "1001"])
-        )
+    with pytest.raises(Exception, match="mellan 2 och 5"):
+        rec.tools["compare_products"](product_numbers=["1001", "1001"])
 
 
 def test_compare_products_returns_rows(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([compare_products])
-    out = rec.tools["compare_products"](
-        compare_products.CompareInput(product_numbers=["1001", "1002"])
-    )
+    out = rec.tools["compare_products"](product_numbers=["1001", "1002"])
     name_row = next(r for r in out.rows if r.field == "name_bold")
     assert name_row.values == ["Alpha Röd", "Beta Röd"]
 
@@ -352,9 +344,7 @@ def test_list_home_stores(ctx: AppContext) -> None:
 def test_get_store_schedule_resolves_main(ctx: AppContext) -> None:
     _seed_products(ctx.db)
     rec = _register([get_store_schedule])
-    out = rec.tools["get_store_schedule"](
-        get_store_schedule.ScheduleInput(site_id="main", days_ahead=3)
-    )
+    out = rec.tools["get_store_schedule"](site_id="main", days_ahead=3)
     assert out.store.site_id == "1701"
     assert len(out.schedule) >= 1
     assert out.schedule[0].is_open is True
@@ -363,15 +353,17 @@ def test_get_store_schedule_resolves_main(ctx: AppContext) -> None:
 # ── taxonomy ─────────────────────────────────────────────────────────────
 
 
-def test_list_taxonomy_values_latest_snapshot(ctx: AppContext) -> None:
+def test_list_taxonomy_values_counts_from_products(ctx: AppContext) -> None:
+    # Country counts now come from the synced products table (issue #10b) so
+    # they agree with what search_products can actually return — NOT the
+    # filter_taxonomy API snapshot. captured_at is None for product-derived facets.
     _seed_products(ctx.db)
     rec = _register([list_taxonomy_values])
-    out = rec.tools["list_taxonomy_values"](
-        list_taxonomy_values.TaxonomyInput(filter_name="Country")
-    )
+    out = rec.tools["list_taxonomy_values"](filter_name="Country")
     values = {e.value: e.count for e in out.values}
-    assert values["Frankrike"] == 300
-    assert out.captured_at == date.today()
+    assert values["Frankrike"] == 1  # one French product seeded (1002)
+    assert values["Sverige"] == 2  # 2001 + discontinued 9999, both Sverige
+    assert out.captured_at is None
 
 
 # ── sync_status ──────────────────────────────────────────────────────────

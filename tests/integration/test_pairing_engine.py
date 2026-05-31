@@ -113,12 +113,13 @@ async def test_fish_dish_matches_fish_wine(settings: Settings, seeded_db: DB) ->
         db=seeded_db,
         embed_client=_FakeEmbedClient(settings.embed_dim),
     )
-    recs, confidence = await engine.pair(dish="lax med kokt potatis", limit=3)
+    result = await engine.pair(dish="lax med kokt potatis", limit=3)
+    recs = result.recommendations
 
     assert recs, "expected at least one recommendation"
     assert recs[0].product.product_number == "1001"
     assert recs[0].similarity > 0.9  # exact fake-match
-    assert confidence in ("high", "medium")
+    assert result.confidence in ("high", "medium")
 
 
 async def test_meat_dish_matches_meat_wine(settings: Settings, seeded_db: DB) -> None:
@@ -127,7 +128,7 @@ async def test_meat_dish_matches_meat_wine(settings: Settings, seeded_db: DB) ->
         db=seeded_db,
         embed_client=_FakeEmbedClient(settings.embed_dim),
     )
-    recs, _ = await engine.pair(dish="entrecôte med rödvinssås", limit=3)
+    recs = (await engine.pair(dish="entrecôte med rödvinssås", limit=3)).recommendations
     assert recs[0].product.product_number == "1002"
 
 
@@ -138,28 +139,35 @@ async def test_taste_symbols_hint_filters_candidates(settings: Settings, seeded_
         embed_client=_FakeEmbedClient(settings.embed_dim),
     )
     # Neutral dish, but pin the filter to fish/shellfish — only 1001 matches.
-    recs, _ = await engine.pair(
-        dish="svamprisotto",
-        taste_symbols_hint=["Fisk"],
-        limit=3,
-    )
+    recs = (
+        await engine.pair(
+            dish="svamprisotto",
+            taste_symbols_hint=["Fisk"],
+            limit=3,
+        )
+    ).recommendations
     pns = [r.product.product_number for r in recs]
     assert pns == ["1001"]
 
 
 async def test_diversity_caps_one_per_subcategory(settings: Settings, seeded_db: DB) -> None:
     now = datetime.now(UTC)
-    # Add two more products in the same category_level_2 as 1002.
+    # Add two more meat-matching products: one more 'Rött vin' (so 'Rött vin'
+    # is over-represented) and one 'Rosévin' (a distinct bucket). Diversify must
+    # surface the two DISTINCT buckets first, not two 'Rött vin'.
     with seeded_db.writer() as conn:
-        for pn, vec_fn in (("1004", _meat_vector), ("1005", _meat_vector)):
+        for pn, cat2, vec_fn in (
+            ("1004", "Rött vin", _meat_vector),
+            ("1005", "Rosévin", _meat_vector),
+        ):
             conn.execute(
                 """
                 INSERT INTO products (product_number, product_id, name_bold,
                     category_level_1, category_level_2, taste_symbols,
                     first_seen_at, last_fetched_at)
-                VALUES (?, ?, ?, 'Vin', 'Rött vin', ?, ?, ?)
+                VALUES (?, ?, ?, 'Vin', ?, ?, ?, ?)
                 """,
-                [pn, f"p{pn}", f"Rött {pn}", ["Kött"], now, now],
+                [pn, f"p{pn}", f"Drink {pn}", cat2, ["Kött"], now, now],
             )
             conn.execute(
                 """
@@ -175,7 +183,8 @@ async def test_diversity_caps_one_per_subcategory(settings: Settings, seeded_db:
         db=seeded_db,
         embed_client=_FakeEmbedClient(settings.embed_dim),
     )
-    recs, _ = await engine.pair(dish="kött", limit=3)
+    recs = (await engine.pair(dish="kött", limit=3)).recommendations
     buckets = [r.product.category_level_2 for r in recs]
-    # No duplicate category_level_2 among the first len(set(buckets)) picks.
+    # The two top picks must be distinct category_level_2 buckets (diversify
+    # caps one per bucket before filling), even though 'Rött vin' has 2 matches.
     assert len(set(buckets[:2])) == len(buckets[:2])
