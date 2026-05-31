@@ -4,6 +4,29 @@ Last revised: 2026-04-19. Self-contained; does not assume MCP hosting — can be
 
 ---
 
+## Implementation status (2026-05-31)
+
+The shipped engine (`src/sb_stack/pairing/{profile,scoring,voicing,engine}.py`) is a
+**reduced structured re-rank**, not the full 8-axis scorer below. It cannot re-embed the
+catalog at request time, so instead it:
+
+- infers `taste_symbols` + a body target from the Swedish dish text (`profile.py`);
+- pulls the embedding-cosine candidate pool **and injects the closest products tagged with
+  an inferred symbol**, so genuinely-paired drinks enter the pool (`engine.py`);
+- re-ranks on `usage_similarity` + `symbol_match` + `taste_clock_fit` + a category prior,
+  with a name-overlap guard (`scoring.py`);
+- diversifies above a relevance floor and computes confidence from real signals (no-signal
+  dishes ⇒ honest `low`);
+- emits Swedish `why` grounded in the product `usage` text + an `interpretation` block
+  (`voicing.py`).
+
+**Implemented axes:** usage-text match, taste-symbol match, taste-clock (body) fit, category
+sensibility. **Not yet implemented:** the full §7 regional/style/price axes + MMR, the §8
+input contract (`style_preference`, `dietary`, `cultural_tag`, …), and the §9
+`cultural_pairings.yaml` layer. The sections below describe the full target design.
+
+---
+
 ## 1. Vision
 
 Give a non-expert home cook an expert-grade drink recommendation for any dish they describe, in their own words. Output includes the "why", not just the pick, so the user learns.

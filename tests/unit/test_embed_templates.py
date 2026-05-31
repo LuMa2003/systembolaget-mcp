@@ -64,7 +64,7 @@ def test_render_beer_uses_alcohol_percentage() -> None:
     )
     assert text_version is not None
     text, version = text_version
-    assert version == "beer_v1"
+    assert version == "beer_v2"  # bumped to inject structured taste-clock tokens (#6)
     assert "Alkohol: 5.8%" in text
 
 
@@ -91,5 +91,6 @@ def test_source_hash_is_stable_and_distinct() -> None:
 def test_templates_cover_expected_categories() -> None:
     assert set(TEMPLATES).issuperset({"Vin", "Öl", "Sprit", "Cider & blanddrycker", "Alkoholfritt"})
     for version, template in TEMPLATES.values():
-        assert version.endswith("_v1")
+        # beer/spirit were bumped to _v2 (#6); others remain _v1.
+        assert version.endswith(("_v1", "_v2"))
         assert "{name_bold}" in template

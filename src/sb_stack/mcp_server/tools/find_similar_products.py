@@ -16,8 +16,8 @@ from sb_stack.mcp_server.responses import (
 from sb_stack.mcp_server.sugar import resolve_site_ids
 
 _DESCRIPTION = (
-    "Hitta drycker som liknar en given produkt. Matchas på smakklockor, "
-    "kategori och semantisk beskrivning."
+    "Hitta drycker som liknar en given produkt. Matchas på semantisk likhet "
+    "och kategori. max_price avser pris per flaska."
 )
 
 
@@ -31,7 +31,20 @@ class SimilarInput(BaseModel):
 
 def register(server: Any) -> None:
     @server.tool(description=_DESCRIPTION)
-    def find_similar_products(inp: SimilarInput) -> SimilarProductsResult:
+    def find_similar_products(
+        product_number: str,
+        limit: int = 10,
+        same_category_only: bool = True,
+        max_price: float | None = None,
+        in_stock_at: str | None = None,
+    ) -> SimilarProductsResult:
+        inp = SimilarInput(
+            product_number=product_number,
+            limit=limit,
+            same_category_only=same_category_only,
+            max_price=max_price,
+            in_stock_at=in_stock_at,
+        )
         ctx = get_context()
         with ctx.db.reader() as conn:
             src_row = conn.execute(
@@ -55,16 +68,23 @@ def register(server: Any) -> None:
                     [inp.product_number],
                     ctx.settings,
                 )
-                return SimilarProductsResult(source=products[0], similar=[])
+                return SimilarProductsResult(source=products[0], results=[])
 
             where: list[str] = [
                 "p.product_number != ?",
                 "(p.is_discontinued IS NULL OR p.is_discontinued = FALSE)",
             ]
             params: list[Any] = [inp.product_number]
-            if inp.same_category_only and src.get("category_level_1"):
-                where.append("p.category_level_1 = ?")
-                params.append(src["category_level_1"])
+            if inp.same_category_only:
+                # level_1 has only ~6 buckets (Vin, Öl, ...) — too coarse to be
+                # useful; prefer level_2 (e.g. "Rött vin") and fall back to
+                # level_1 only when level_2 is missing.
+                if src.get("category_level_2"):
+                    where.append("p.category_level_2 = ?")
+                    params.append(src["category_level_2"])
+                elif src.get("category_level_1"):
+                    where.append("p.category_level_1 = ?")
+                    params.append(src["category_level_1"])
             if inp.max_price is not None:
                 where.append("p.price_incl_vat <= ?")
                 params.append(inp.max_price)
@@ -117,4 +137,4 @@ def register(server: Any) -> None:
                 continue
             similarity = max(0.0, 1.0 - distance_by_pn[pn])
             ordered.append(SemanticSearchItem(**p.model_dump(), similarity=round(similarity, 4)))
-        return SimilarProductsResult(source=source, similar=ordered)
+        return SimilarProductsResult(source=source, results=ordered)

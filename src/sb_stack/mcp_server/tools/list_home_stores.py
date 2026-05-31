@@ -6,21 +6,15 @@ import math
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel
-
 from sb_stack.mcp_server.context import get_context
 from sb_stack.mcp_server.responses import HomeStore, ListHomeStoresResult
 
 _DESCRIPTION = "Lista användarens hemmabutiker med öppettider och position."
 
 
-class _NoInput(BaseModel):
-    pass
-
-
 def register(server: Any) -> None:
     @server.tool(description=_DESCRIPTION)
-    def list_home_stores(_: _NoInput | None = None) -> ListHomeStoresResult:
+    def list_home_stores() -> ListHomeStoresResult:
         ctx = get_context()
         today = date.today()
         with ctx.db.reader() as conn:
