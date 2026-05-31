@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from sb_stack.errors import InvalidInputError
+from sb_stack.errors import InvalidInputError, UnknownStoreError
 from sb_stack.mcp_server.context import get_context
 from sb_stack.mcp_server.responses import (
     HomeStore,
@@ -18,6 +18,10 @@ from sb_stack.mcp_server.sugar import resolve_site_ids
 
 _DESCRIPTION = "Visa öppettider för en butik de kommande dagarna."
 
+_NO_HOURS_NOTE = (
+    "Öppettider saknas för denna butik – synken har inte hämtat öppettidsdata än."
+)
+
 
 class ScheduleInput(BaseModel):
     site_id: str = "main"
@@ -26,11 +30,13 @@ class ScheduleInput(BaseModel):
 
 def register(server: Any) -> None:
     @server.tool(description=_DESCRIPTION)
-    def get_store_schedule(inp: ScheduleInput) -> StoreSchedule:
+    def get_store_schedule(site_id: str = "main", days_ahead: int = 14) -> StoreSchedule:
+        inp = ScheduleInput(site_id=site_id, days_ahead=days_ahead)
         ctx = get_context()
-        site_ids = resolve_site_ids(inp.site_id, ctx.settings) or [inp.site_id]
+        # Blank/empty site_id falls back to the documented default store, not "".
+        site_ids = resolve_site_ids(inp.site_id, ctx.settings) or [ctx.settings.main_store]
         if len(site_ids) != 1:
-            raise InvalidInputError("site_id must resolve to exactly one store")
+            raise InvalidInputError("site_id matchar flera butiker — ange exakt en butik")
         site_id = site_ids[0]
 
         today = date.today()
@@ -47,7 +53,7 @@ def register(server: Any) -> None:
                 [site_id],
             ).fetchone()
             if store_row is None:
-                raise InvalidInputError(f"unknown site_id: {site_id}")
+                raise UnknownStoreError(site_id)
             store = HomeStore(
                 site_id=store_row[0],
                 alias=store_row[1],
@@ -79,7 +85,8 @@ def register(server: Any) -> None:
             )
             for r in rows
         ]
-        return StoreSchedule(store=store, schedule=entries)
+        notes = _NO_HOURS_NOTE if not entries else None
+        return StoreSchedule(store=store, schedule=entries, notes=notes)
 
 
 def _fmt_time(v: Any) -> str | None:

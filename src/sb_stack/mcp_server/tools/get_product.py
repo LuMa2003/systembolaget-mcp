@@ -21,6 +21,9 @@ _DESCRIPTION = (
 )
 _IMAGE_SIZES = (100, 200, 400, 800)
 _IMAGE_URL_TEMPLATE = "https://product-cdn.systembolaget.se/productimages/{pid}/{pid}_{size}.webp"
+# List-typed product columns: DuckDB returns NULL for an absent array, so we
+# coerce them to [] for a single, stable JSON shape across all tools (#19).
+_LIST_FIELDS = ("grapes", "taste_symbols")
 
 
 class GetProductInput(BaseModel):
@@ -30,27 +33,39 @@ class GetProductInput(BaseModel):
     @model_validator(mode="after")
     def _require_one(self) -> GetProductInput:
         if not self.product_number and not self.query:
-            raise InvalidInputError("provide product_number or query")
+            raise InvalidInputError(
+                "ange artikelnummer (product_number) eller ett sökord (query)"
+            )
         return self
 
 
 def register(server: Any) -> None:
     @server.tool(description=_DESCRIPTION)
-    def get_product(inp: GetProductInput) -> GetProductResult:
+    def get_product(
+        product_number: str | None = None,
+        query: str | None = None,
+    ) -> GetProductResult:
+        inp = GetProductInput(product_number=product_number, query=query)
         ctx = get_context()
         with ctx.db.reader() as conn:
             pn = inp.product_number
             if pn is None:
-                # Simple fallback fuzzy lookup: case-insensitive LIKE on
-                # name_bold. FTS would be richer; can swap in later.
+                # Fallback fuzzy lookup across the name + producer fields,
+                # case-insensitive. Prefer products still in the range and
+                # those carried by the most stores for a stable, sensible pick.
+                term = f"%{inp.query}%"
                 row = conn.execute(
                     """
                     SELECT product_number FROM products
                      WHERE lower(name_bold) LIKE lower(?)
-                     ORDER BY is_discontinued ASC NULLS FIRST
+                        OR lower(name_thin) LIKE lower(?)
+                        OR lower(producer_name) LIKE lower(?)
+                     ORDER BY is_discontinued ASC NULLS FIRST,
+                              available_number_of_stores DESC NULLS LAST,
+                              product_number ASC
                      LIMIT 1
                     """,
-                    [f"%{inp.query}%"],
+                    [term, term, term],
                 ).fetchone()
                 if row is None:
                     raise ProductNotFoundError(inp.query or "")
@@ -61,6 +76,8 @@ def register(server: Any) -> None:
                 raise ProductNotFoundError(pn)
             cols = [d[0] for d in conn.description]
             product_dict: dict[str, Any] = dict(zip(cols, row, strict=True))
+            for field in _LIST_FIELDS:
+                product_dict[field] = list(product_dict.get(field) or [])
 
             variants_rows = conn.execute(
                 """
