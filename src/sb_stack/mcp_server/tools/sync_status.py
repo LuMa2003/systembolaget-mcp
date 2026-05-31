@@ -70,18 +70,14 @@ def register(server: Any) -> None:
         )
 
 
-def _build_summary(
-    stale: bool, hours_since: float | None, last_success: datetime | None
-) -> str:
+def _build_summary(stale: bool, hours_since: float | None, last_success: datetime | None) -> str:
     if hours_since is None or last_success is None:
         return (
             "Ingen lyckad synk har körts ännu. Datan kan saknas eller vara inaktuell – "
             "kör `sb-stack sync`."
         )
     days = int(hours_since // 24)
-    when = (
-        f"för {days} dagar sedan" if days >= 1 else f"för {round(hours_since)} timmar sedan"
-    )
+    when = f"för {days} dagar sedan" if days >= 1 else f"för {round(hours_since)} timmar sedan"
     date_str = last_success.date().isoformat()
     if stale:
         return (

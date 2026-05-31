@@ -33,9 +33,7 @@ class GetProductInput(BaseModel):
     @model_validator(mode="after")
     def _require_one(self) -> GetProductInput:
         if not self.product_number and not self.query:
-            raise InvalidInputError(
-                "ange artikelnummer (product_number) eller ett sökord (query)"
-            )
+            raise InvalidInputError("ange artikelnummer (product_number) eller ett sökord (query)")
         return self
 
 

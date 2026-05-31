@@ -18,9 +18,7 @@ from sb_stack.mcp_server.sugar import resolve_site_ids
 
 _DESCRIPTION = "Visa öppettider för en butik de kommande dagarna."
 
-_NO_HOURS_NOTE = (
-    "Öppettider saknas för denna butik – synken har inte hämtat öppettidsdata än."
-)
+_NO_HOURS_NOTE = "Öppettider saknas för denna butik – synken har inte hämtat öppettidsdata än."
 
 
 class ScheduleInput(BaseModel):

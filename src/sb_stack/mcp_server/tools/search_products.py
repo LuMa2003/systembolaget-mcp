@@ -78,11 +78,7 @@ class SearchInput(BaseModel):
             and self.price_min > self.price_max
         ):
             raise ValueError("lägsta pris kan inte vara högre än högsta pris")
-        if (
-            self.abv_min is not None
-            and self.abv_max is not None
-            and self.abv_min > self.abv_max
-        ):
+        if self.abv_min is not None and self.abv_max is not None and self.abv_min > self.abv_max:
             raise ValueError("lägsta alkoholhalt kan inte vara högre än högsta alkoholhalt")
         return self
 
@@ -143,9 +139,7 @@ def _build_where(  # noqa: PLR0912, PLR0915 — one branch per filter is cohesiv
             where.append(f"{fld} <= ?")
             params.append(hi)
     if inp.pairs_with_any:
-        where.append(
-            "list_has_any(list_transform(taste_symbols, x -> lower(x)), ?::VARCHAR[])"
-        )
+        where.append("list_has_any(list_transform(taste_symbols, x -> lower(x)), ?::VARCHAR[])")
         params.append([s.lower() for s in inp.pairs_with_any])
     if inp.grapes_any:
         where.append("list_has_any(list_transform(grapes, x -> lower(x)), ?::VARCHAR[])")
@@ -278,14 +272,10 @@ def register(server: Any) -> None:
 
             where_sql = (" WHERE " + " AND ".join(where)) if where else ""
 
-            count_row = conn.execute(
-                f"SELECT COUNT(*) FROM products{where_sql}", params
-            ).fetchone()
+            count_row = conn.execute(f"SELECT COUNT(*) FROM products{where_sql}", params).fetchone()
             total = int(count_row[0]) if count_row else 0
             sql = (
-                f"SELECT * FROM products{where_sql} "
-                f"ORDER BY {_order_clause(inp)} "
-                f"LIMIT ? OFFSET ?"
+                f"SELECT * FROM products{where_sql} ORDER BY {_order_clause(inp)} LIMIT ? OFFSET ?"
             )
             products = rows_to_products(conn, sql, [*params, inp.limit, inp.offset], ctx.settings)
         return SearchProductsResult(results=products, total_count=int(total))

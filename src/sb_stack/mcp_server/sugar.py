@@ -36,8 +36,6 @@ def assert_stores_exist(conn: duckdb.DuckDBPyConnection, site_ids: list[str]) ->
     typo'd / unknown store fails loudly instead of silently returning 0 rows.
     """
     for sid in site_ids:
-        row = conn.execute(
-            "SELECT 1 FROM stores WHERE site_id = ? LIMIT 1", [sid]
-        ).fetchone()
+        row = conn.execute("SELECT 1 FROM stores WHERE site_id = ? LIMIT 1", [sid]).fetchone()
         if row is None:
             raise UnknownStoreError(sid)

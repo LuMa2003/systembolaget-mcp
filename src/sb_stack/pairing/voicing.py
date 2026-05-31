@@ -106,10 +106,7 @@ def build_sommelier_reasoning(profile: DishProfile, confidence: str) -> str:
             "med utgångspunkt i Systembolagets sommeliertexter."
         )
     else:
-        base = (
-            "Förslagen utgår från rättens karaktär och Systembolagets "
-            "sommeliertexter."
-        )
+        base = "Förslagen utgår från rättens karaktär och Systembolagets sommeliertexter."
     if confidence == "low":
         base += " Träffsäkerheten är låg — se det som olika vägar att prova."
     elif confidence == "medium":

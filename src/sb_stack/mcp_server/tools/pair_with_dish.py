@@ -56,8 +56,7 @@ def register(server: Any) -> None:
             return PairWithDishResult(
                 dish=inp.dish,
                 notes=(
-                    "Embedding-tjänsten är inte konfigurerad — "
-                    "pairing kräver semantisk retrieval."
+                    "Embedding-tjänsten är inte konfigurerad — pairing kräver semantisk retrieval."
                 ),
             )
 

@@ -157,9 +157,7 @@ _LOW_BODY_WORDS: tuple[str, ...] = (
 
 # Symbols that legitimately call for spirits / liqueurs (so the category prior
 # does not penalise them in those contexts).
-_SPIRIT_FRIENDLY_SYMBOLS: frozenset[str] = frozenset(
-    {SYMBOL_DESSERT, SYMBOL_APERITIF}
-)
+_SPIRIT_FRIENDLY_SYMBOLS: frozenset[str] = frozenset({SYMBOL_DESSERT, SYMBOL_APERITIF})
 
 
 @dataclass

@@ -97,9 +97,7 @@ def _name_contains_dish_word(product: Product, profile: DishProfile) -> bool:
     return bool(profile.dish_words & name_words)
 
 
-def score_candidates(
-    candidates: list[Candidate], profile: DishProfile
-) -> list[Candidate]:
+def score_candidates(candidates: list[Candidate], profile: DishProfile) -> list[Candidate]:
     """Score and sort candidates in place; returns the same list, ranked."""
     for c in candidates:
         c.symbol_match = _symbol_match(c.product, profile)
@@ -137,9 +135,7 @@ def diversify(
     picked: list[Candidate] = []
     seen: set[str] = set()
     for c in pool:
-        bucket = (
-            c.product.category_level_2 or c.product.category_level_1 or "other"
-        ).lower()
+        bucket = (c.product.category_level_2 or c.product.category_level_1 or "other").lower()
         if bucket in seen:
             continue
         picked.append(c)
@@ -156,9 +152,7 @@ def diversify(
     return picked
 
 
-def compute_confidence(
-    scored: list[Candidate], profile: DishProfile
-) -> str:
+def compute_confidence(scored: list[Candidate], profile: DishProfile) -> str:
     """Confidence from real signals, not raw cosine magnitude.
 
     Counts candidates that both clear the usage-similarity bar AND match an
@@ -167,11 +161,7 @@ def compute_confidence(
     if not profile.has_signal:
         return "low"
 
-    strong = [
-        c
-        for c in scored
-        if c.similarity >= STRONG_USAGE and c.symbol_match > 0.0
-    ]
+    strong = [c for c in scored if c.similarity >= STRONG_USAGE and c.symbol_match > 0.0]
     if profile.symbols and len(strong) >= 5:
         return "high"
     if strong or (profile.symbols and any(c.symbol_match > 0.0 for c in scored)):
