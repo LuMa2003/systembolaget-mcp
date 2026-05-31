@@ -14,8 +14,9 @@ from pydantic import BaseModel, Field, model_validator
 from sb_stack.mcp_server import sugar
 from sb_stack.mcp_server.context import get_context
 from sb_stack.mcp_server.product_rows import rows_to_products
-from sb_stack.mcp_server.responses import SearchProductsResult
+from sb_stack.mcp_server.responses import Product, SearchProductsResult
 from sb_stack.mcp_server.sugar import resolve_site_ids
+from sb_stack.settings import Settings
 
 OrderBy = Literal[
     "relevance",
@@ -30,8 +31,8 @@ OrderBy = Literal[
 _DESCRIPTION = (
     "Sök i Systembolagets sortiment med filter: kategori, land, pris, "
     "alkoholhalt, smakklockor, matsymboler, förpackning, certifieringar, "
-    "m.m. Sökordet (text) matchar produktnamn och producent (delsträng, "
-    "skiftlägesokänsligt). Land, kategori och druva matchas skiftlägesokänsligt "
+    "m.m. Sökordet (text) söker och rangordnar på relevans i produktnamn och "
+    "producent (skiftlägesokänsligt). Land, kategori och druva matchas skiftlägesokänsligt "
     "mot Systembolagets svenska benämningar. Använd denna när frågan kan "
     "uttryckas som strukturerade kriterier eller innehåller exakta namn och sökord."
 )
@@ -89,13 +90,8 @@ def _build_where(  # noqa: PLR0912, PLR0915 — one branch per filter is cohesiv
     where: list[str] = []
     params: list[Any] = []
 
-    if inp.text:
-        where.append(
-            "(lower(name_bold) LIKE '%' || lower(?) || '%' "
-            "OR lower(name_thin) LIKE '%' || lower(?) || '%' "
-            "OR lower(producer_name) LIKE '%' || lower(?) || '%')"
-        )
-        params.extend([inp.text, inp.text, inp.text])
+    # NB: free-text (inp.text) is handled separately in `register` — via the
+    # FTS BM25 index when available, else the substring fallback below.
     if inp.category:
         where.append("lower(category_level_1) = lower(?)")
         params.append(inp.category)
@@ -164,6 +160,21 @@ def _build_where(  # noqa: PLR0912, PLR0915 — one branch per filter is cohesiv
     return where, params
 
 
+_TEXT_ILIKE = (
+    "(lower(name_bold) LIKE '%' || lower(?) || '%' "
+    "OR lower(name_thin) LIKE '%' || lower(?) || '%' "
+    "OR lower(producer_name) LIKE '%' || lower(?) || '%')"
+)
+
+
+def _fts_available(conn: Any) -> bool:
+    """True when the DuckDB FTS index has been built (by the sync finalize phase)."""
+    row = conn.execute(
+        "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'fts_main_products'"
+    ).fetchone()
+    return row is not None
+
+
 def _order_clause(inp: SearchInput) -> str:
     # name ordering uses a trimmed, name_thin-preferring expression because
     # name_bold frequently holds the producer and has leading whitespace.
@@ -183,6 +194,32 @@ def _order_clause(inp: SearchInput) -> str:
         "body_desc": "taste_clock_body DESC NULLS LAST",
         "comparison_price_asc": "comparison_price ASC NULLS LAST",
     }[inp.order_by]
+
+
+def _run_fts_query(
+    conn: Any,
+    inp: SearchInput,
+    where_sql: str,
+    params: list[Any],
+    settings: Settings,
+) -> tuple[int, list[Product]]:
+    """BM25-ranked text search over the FTS index, with structured filters applied.
+
+    match_bm25 returns NULL for non-matching rows, so we wrap the filtered set and
+    keep only scored rows, ordered by descending relevance.
+    """
+    inner = (
+        "SELECT *, fts_main_products.match_bm25(product_number, ?) AS _bm25 "
+        f"FROM products{where_sql}"
+    )
+    count_row = conn.execute(
+        f"SELECT COUNT(*) FROM ({inner}) WHERE _bm25 IS NOT NULL",
+        [inp.text, *params],
+    ).fetchone()
+    total = int(count_row[0]) if count_row else 0
+    sql = f"SELECT * FROM ({inner}) WHERE _bm25 IS NOT NULL ORDER BY _bm25 DESC LIMIT ? OFFSET ?"
+    products = rows_to_products(conn, sql, [inp.text, *params, inp.limit, inp.offset], settings)
+    return total, products
 
 
 def register(server: Any) -> None:
@@ -270,12 +307,27 @@ def register(server: Any) -> None:
                 )
                 params.extend(site_ids)
 
+            # Free text: BM25-rank via the FTS index when it exists; otherwise
+            # fall back to a case-insensitive substring match.
+            use_fts = bool(inp.text) and _fts_available(conn)
+            if inp.text and not use_fts:
+                where.append(_TEXT_ILIKE)
+                params.extend([inp.text, inp.text, inp.text])
+
             where_sql = (" WHERE " + " AND ".join(where)) if where else ""
 
-            count_row = conn.execute(f"SELECT COUNT(*) FROM products{where_sql}", params).fetchone()
-            total = int(count_row[0]) if count_row else 0
-            sql = (
-                f"SELECT * FROM products{where_sql} ORDER BY {_order_clause(inp)} LIMIT ? OFFSET ?"
-            )
-            products = rows_to_products(conn, sql, [*params, inp.limit, inp.offset], ctx.settings)
+            if use_fts:
+                total, products = _run_fts_query(conn, inp, where_sql, params, ctx.settings)
+            else:
+                count_row = conn.execute(
+                    f"SELECT COUNT(*) FROM products{where_sql}", params
+                ).fetchone()
+                total = int(count_row[0]) if count_row else 0
+                sql = (
+                    f"SELECT * FROM products{where_sql} "
+                    f"ORDER BY {_order_clause(inp)} LIMIT ? OFFSET ?"
+                )
+                products = rows_to_products(
+                    conn, sql, [*params, inp.limit, inp.offset], ctx.settings
+                )
         return SearchProductsResult(results=products, total_count=int(total))

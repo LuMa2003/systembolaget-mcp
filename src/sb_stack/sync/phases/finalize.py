@@ -91,6 +91,20 @@ def run_phase_f(
             [str(run_id), now],
         )
 
+    # Rebuild the full-text search index over the freshly-persisted catalog.
+    # DuckDB's FTS index is static (not auto-maintained), so it must be recreated
+    # each sync. Best-effort: a stale/failed index must not fail the run —
+    # search_products falls back to substring matching when the index is absent.
+    try:
+        with db.writer() as conn:
+            conn.execute(
+                "PRAGMA create_fts_index('products', 'product_number', "
+                "'name_bold', 'name_thin', 'producer_name', overwrite=1)"
+            )
+        logger.info("fts_index_rebuilt")
+    except Exception as e:
+        logger.warning("fts_index_rebuild_failed", error=str(e))
+
     # Backup — best-effort; don't fail the run if it fails.
     try:
         _backup_db(settings, now.date())
