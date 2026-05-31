@@ -298,6 +298,31 @@ def test_search_products_home_stock_populated(ctx: AppContext) -> None:
     assert alpha.home_stock["1701"].stock == 7
 
 
+def test_search_products_text_substring_fallback(ctx: AppContext) -> None:
+    # No FTS index built → case-insensitive substring fallback over name fields.
+    _seed_products(ctx.db)
+    rec = _register([search_products])
+    out = rec.tools["search_products"](text="röd")
+    pns = {p.product_number for p in out.results}
+    assert pns == {"1001", "1002"}  # Alpha Röd + Beta Röd (Utgått is discontinued)
+
+
+def test_search_products_text_fts_bm25_ranks(ctx: AppContext) -> None:
+    # With the FTS index built (as the sync finalize phase does), text search is
+    # tokenized + BM25-ranked rather than a raw substring match.
+    _seed_products(ctx.db)
+    with ctx.db.writer() as conn:
+        conn.execute(
+            "PRAGMA create_fts_index('products', 'product_number', "
+            "'name_bold', 'name_thin', 'producer_name', overwrite=1)"
+        )
+    rec = _register([search_products])
+    out = rec.tools["search_products"](text="Alpha")
+    pns = [p.product_number for p in out.results]
+    assert pns == ["1001"]  # only the 'Alpha' token matches
+    assert out.total_count == 1
+
+
 # ── get_product / compare_products ───────────────────────────────────────
 
 
